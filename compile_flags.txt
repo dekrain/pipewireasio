@@ -2,6 +2,7 @@
 -Wextra
 -std=gnu11
 -DDEBUG
+-D_GNU_SOURCE
 -DDRIVER_DLL="pipewireasio64.dll"
 -D__WINESRC__
 -I.

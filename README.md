@@ -134,6 +134,10 @@ that overrides the JACK client name derived from the program name.
 
 #### PipeWire version: `pipewireasioXX.dll`
 
+#### 0.2.0
+* 18-JUL-2025: Automatic I/O linking in the ASIO driver
+* April  2025: Ground work for node I/O configuration
+
 #### 0.1.0
 * 23-APR-2025: Relicense new GUI under LGPLv3+
 * 02-JAN-2025: Cleanup for release

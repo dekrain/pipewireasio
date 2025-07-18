@@ -40,10 +40,13 @@
 #include <spa/param/audio/format-utils.h>
 #include <spa/param/buffers.h>
 #include <spa/pod/builder.h>
-#include <pipewire/buffers.h>
+#include <spa/utils/dict.h>
+#include <pipewire/core.h>
 #include <pipewire/context.h>
-#include <pipewire/filter.h>
 #include <pipewire/keys.h>
+#include <pipewire/buffers.h>
+#include <pipewire/filter.h>
+#include <pipewire/link.h>
 
 #include "new_gui/gui_stub.inc.c"
 #include "pw_helper_c.h"
@@ -154,20 +157,20 @@ DECLARE_INTERFACE_(IWineASIO,IUnknown)
 
 typedef struct IWineASIO *LPWINEASIO;
 
-typedef struct IOChannel
-{
-    bool                         active;
-    char                         port_name[ASIO_MAX_NAME_LENGTH];
-    void                        *port;
-    struct pw_buffer            *buffers[2];
-} IOChannel;
+struct io_port {
+    bool              active;
+    char              port_name[ASIO_MAX_NAME_LENGTH];
+    void             *port;
+    struct pw_buffer *buffers[2];
+    struct pw_link   *link;
+};
 
 #define DEVICE_NAME_SIZE 1024
 
 typedef struct IWineASIOImpl
 {
     /* COM stuff */
-    const IWineASIOVtbl         *lpVtbl;
+    const IWineASIOVtbl        *lpVtbl;
     LONG                        ref;
 
     /* Reference to the DLL class factory (to keep DLL alive while an object is live) */
@@ -180,7 +183,7 @@ typedef struct IWineASIOImpl
     LONG                        asio_active_inputs;
     LONG                        asio_active_outputs;
     bool                        asio_buffer_index;
-    ASIOCallbacks               *asio_callbacks;
+    ASIOCallbacks              *asio_callbacks;
     LONG                        asio_current_buffersize;
     INT                         asio_driver_state;
     uint64_t                    asio_sample_position;
@@ -192,8 +195,6 @@ typedef struct IWineASIOImpl
     bool                        asio_time_info_mode;
 
     /* WineASIO configuration options */
-    bool                        wineasio_autostart_server;
-    bool                        wineasio_connect_to_hardware;
     bool                        wineasio_fixed_buffersize;
     int                         wineasio_number_inputs;
     int                         wineasio_number_outputs;
@@ -202,29 +203,30 @@ typedef struct IWineASIOImpl
     WCHAR                       pwasio_output_device_name[DEVICE_NAME_SIZE];
 
     /* PipeWire stuff */
-    struct user_pw_helper *pw_helper;
-    struct pw_loop *pw_loop;
-    struct pw_context *pw_context;
-    struct pw_core *pw_core;
+    struct user_pw_helper      *pw_helper;
+    struct pw_loop             *pw_loop;
+    struct pw_context          *pw_context;
+    struct pw_core             *pw_core;
 
-    struct pw_node *current_input_node;
-    struct pw_node *current_output_node;
+    struct pw_node             *current_input_node;
+    struct pw_node             *current_output_node;
 
-    struct pw_filter *pw_filter;
-    struct spa_hook pw_filter_listener;
+    struct pw_filter           *pw_filter;
+    struct spa_hook             pw_filter_listener;
 
-    struct pwasio_gui *gui;
-    struct pwasio_gui_conf gui_conf;
+    struct pwasio_gui          *gui;
+    struct pwasio_gui_conf      gui_conf;
 
     char                        client_name[ASIO_MAX_NAME_LENGTH];
 
     /* jack process callback buffers */
     //jack_default_audio_sample_t *callback_audio_buffer;
-    IOChannel                   *input_channel;
-    IOChannel                   *output_channel;
+    struct io_port             *input_channel;
+    struct io_port             *output_channel;
 
-    uint32_t                     asio_buffers_left_to_init;
-    pthread_barrier_t            asio_buffers_filled;
+    uint32_t                    asio_buffers_left_to_init;
+    pthread_barrier_t           pw_filter_bound;
+    pthread_barrier_t           asio_buffers_filled;
 } IWineASIOImpl;
 
 enum { Loaded, Initialized, Prepared, Running };
@@ -305,6 +307,8 @@ HRESULT WINAPI  WineASIOCreateInstance(REFIID riid, LPVOID *ppobj, IUnknown *cls
 static  void    store_config(IWineASIOImpl *This);
 static  VOID    configure_driver(IWineASIOImpl *This);
 static  void    get_nodes_by_name(IWineASIOImpl *This);
+static  void    connect_io_port(IWineASIOImpl *This, struct io_port *port, uint32_t idx, enum spa_direction dir);
+static  void    dispose_io_port(IWineASIOImpl *This, struct io_port *port, enum spa_direction dir);
 
 HIDDEN void GuiClosed(struct pwasio_gui_conf *conf);
 HIDDEN void GuiApplyConfig(struct pwasio_gui_conf *conf);
@@ -359,6 +363,10 @@ static void pipewire_state_changed_callback(void *data, enum pw_filter_state fro
     } else {
         putchar('\n');
     }
+
+    if (from == PW_FILTER_STATE_CONNECTING && to == PW_FILTER_STATE_PAUSED) {
+        pthread_barrier_wait(&This->pw_filter_bound);
+    }
 }
 
 static void pipewire_io_changed_callback(void *data, void *port, uint32_t id, void *area, uint32_t size) {
@@ -379,7 +387,7 @@ static void pipewire_add_buffer_callback(void *data, void *port, struct pw_buffe
     printf("add_buffer: iface:%p port:%p, buffer:%p\n", This, port, buffer);
 
     for (int idx = 0; idx < This->wineasio_number_inputs + This->wineasio_number_outputs; ++idx) {
-        IOChannel *chan = &This->input_channel[idx];
+        struct io_port *chan = &This->input_channel[idx];
         if (chan->port == port) {
             if (chan->buffers[1]) {
                 if (chan->buffers[0]) {
@@ -435,16 +443,20 @@ static void pipewire_process_callback(void *data, struct spa_io_position *positi
     }
 
     struct pw_buffer *buffer;
-    IOChannel *chan;
-    for (idx = 0; idx < This->asio_active_inputs; ++idx) {
+    struct io_port *chan;
+    for (idx = 0; idx < This->wineasio_number_inputs; ++idx) {
         chan = &This->input_channel[idx];
+        if (!chan->active)
+            continue;
         //chan->buffers[This->asio_buffer_index] = pw_filter_dequeue_buffer(chan->port);
         //pw_filter_queue_buffer(chan->port, chan->buffers[This->asio_buffer_index ^ 1]);
         buffer = pw_filter_dequeue_buffer(chan->port);
         pw_filter_queue_buffer(chan->port, buffer);
     }
-    for (idx = 0; idx < This->asio_active_outputs; ++idx) {
+    for (idx = 0; idx < This->wineasio_number_outputs; ++idx) {
         chan = &This->output_channel[idx];
+        if (!chan->active)
+            continue;
         //chan->buffers[This->asio_buffer_index] = pw_filter_dequeue_buffer(chan->port);
         //pw_filter_queue_buffer(chan->port, chan->buffers[This->asio_buffer_index ^ 1]);
         //desired_buffer = chan->buffers[This->asio_buffer_index];
@@ -596,7 +608,7 @@ static ASIOError InitPorts(IWineASIOImpl *This) {
     int idx;
 
     /* Allocate IOChannel structures */
-    This->input_channel = HeapAlloc(GetProcessHeap(), 0, (This->wineasio_number_inputs + This->wineasio_number_outputs) * sizeof(IOChannel));
+    This->input_channel = HeapAlloc(GetProcessHeap(), 0, (This->wineasio_number_inputs + This->wineasio_number_outputs) * sizeof(struct io_port));
     if (!This->input_channel)
     {
         ERR("Unable to allocate IOChannel structures for %i channels\n", This->wineasio_number_inputs + This->wineasio_number_outputs);
@@ -704,7 +716,10 @@ HIDDEN ASIOBool STDMETHODCALLTYPE Init(LPWINEASIO iface, void *sysRef)
     This->gui_conf.apply_config = GuiApplyConfig;
     This->gui_conf.load_config = GuiLoadConfig;
     This->gui_conf.pw_helper = This->pw_helper;
-    This->gui_conf.cf_buffer_size = 1024;
+    This->gui_conf.cf_buffer_size = This->wineasio_preferred_buffersize;
+    This->gui_conf.cf_io_type = PWASIO_IO_SIMPLE;
+    This->gui_conf.cf_io_config.simple.input = PWASIO_NODE_DEFAULT;
+    This->gui_conf.cf_io_config.simple.output = PWASIO_NODE_DEFAULT;
 
     get_nodes_by_name(This);
 
@@ -720,9 +735,9 @@ HIDDEN ASIOBool STDMETHODCALLTYPE Init(LPWINEASIO iface, void *sysRef)
 
     This->pw_filter = pw_filter_new(This->pw_core, This->client_name, pw_properties_new(
         PW_KEY_MEDIA_TYPE, "Audio",
-        PW_KEY_MEDIA_ROLE, "Production",
+        PW_KEY_MEDIA_ROLE, "DSP",
         PW_KEY_MEDIA_CLASS, "Stream/Audio",
-        PW_KEY_NODE_AUTOCONNECT, "true",
+        PW_KEY_MEDIA_CATEGORY, "Duplex",
         NULL
     ));
 
@@ -1178,29 +1193,6 @@ HIDDEN ASIOError STDMETHODCALLTYPE CreateBuffers(LPWINEASIO iface, ASIOBufferInf
     if (!bufferInfo || !asioCallbacks)
         return ASE_InvalidMode;
 
-    /* Check for invalid channel numbers */
-    #if 0
-    for (i = j = k = 0; i < numChannels; i++, buffer_info++)
-    {
-        if (buffer_info->isInput)
-        {
-            if (j++ >= This->wineasio_number_inputs)
-            {
-                WARN("Invalid input channel requested\n");
-                return ASE_InvalidMode;
-            }
-        }
-        else
-        {
-            if (k++  >= This->wineasio_number_outputs)
-            {
-                WARN("Invalid output channel requested\n");
-                return ASE_InvalidMode;
-            }
-        }
-    }
-    #endif
-
     /* set buf_size */
     if (This->wineasio_fixed_buffersize)
     {
@@ -1260,25 +1252,31 @@ HIDDEN ASIOError STDMETHODCALLTYPE CreateBuffers(LPWINEASIO iface, ASIOBufferInf
     buffer_info = bufferInfo;
     This->asio_active_inputs = This->asio_active_outputs = 0;
 
-    #if 0
     for (i = 0; i < This->wineasio_number_inputs; i++) {
         This->input_channel[i].active = false;
     }
     for (i = 0; i < This->wineasio_number_outputs; i++) {
         This->output_channel[i].active = false;
     }
-    #endif
 
     for (i = 0; i < numChannels; i++, buffer_info++)
     {
-        IOChannel *chan;
+        struct io_port *chan;
         if (buffer_info->isInput)
         {
+            if (buffer_info->channelNum >= This->wineasio_number_inputs) {
+                WARN("Non-existant input channel requested: %u/%u\n", buffer_info->channelNum, This->wineasio_number_inputs);
+                return ASE_InvalidMode;
+            }
             This->asio_active_inputs++;
             chan = &This->input_channel[buffer_info->channelNum];
         }
         else
         {
+            if (buffer_info->channelNum >= This->wineasio_number_outputs) {
+                WARN("Non-existant output channel requested: %u/%u\n", buffer_info->channelNum, This->wineasio_number_outputs);
+                return ASE_InvalidMode;
+            }
             This->asio_active_outputs++;
             chan = &This->output_channel[buffer_info->channelNum];
         }
@@ -1307,10 +1305,30 @@ HIDDEN ASIOError STDMETHODCALLTYPE CreateBuffers(LPWINEASIO iface, ASIOBufferInf
 
     This->asio_buffers_left_to_init = 2 * (This->asio_active_inputs + This->asio_active_outputs);
     pthread_barrier_init(&This->asio_buffers_filled, NULL, 2);
+    pthread_barrier_init(&This->pw_filter_bound, NULL, 2);
 
     if (pw_filter_connect(This->pw_filter, PW_FILTER_FLAG_RT_PROCESS, connect_params, ARRAYSIZE(connect_params)) < 0) {
         ERR("Failed to setup the filter node\n");
         return ASE_HWMalfunction;
+    }
+
+    user_pw_unlock_loop(This->pw_helper);
+    pthread_barrier_wait(&This->pw_filter_bound);
+    //user_pw_lock_loop(This->pw_helper); // locking here interferes with default_node calls
+
+    /* Connect all ports */
+    for (i = 0; i < This->wineasio_number_inputs; ++i) {
+        if (!This->input_channel[i].active)
+            continue;
+
+        connect_io_port(This, &This->input_channel[i], i, SPA_DIRECTION_INPUT);
+    }
+
+    for (i = 0; i < This->wineasio_number_outputs; ++i) {
+        if (!This->output_channel[i].active)
+            continue;
+
+        connect_io_port(This, &This->output_channel[i], i, SPA_DIRECTION_OUTPUT);
     }
 
     /* Allocate audio buffers */
@@ -1340,14 +1358,14 @@ HIDDEN ASIOError STDMETHODCALLTYPE CreateBuffers(LPWINEASIO iface, ASIOBufferInf
     TRACE("%i audio channels initialized\n", This->asio_active_inputs + This->asio_active_outputs);
     #endif
 
-    user_pw_unlock_loop(This->pw_helper);
+    //user_pw_unlock_loop(This->pw_helper); // see above
 
     pthread_barrier_wait(&This->asio_buffers_filled);
 
     buffer_info = bufferInfo;
     for (i = 0; i < numChannels; i++, buffer_info++)
     {
-        IOChannel *chan;
+        struct io_port *chan;
         if (buffer_info->isInput)
         {
             chan = &This->input_channel[buffer_info->channelNum];
@@ -1378,23 +1396,7 @@ HIDDEN ASIOError STDMETHODCALLTYPE CreateBuffers(LPWINEASIO iface, ASIOBufferInf
 
     #endif
 
-    //if (jack_activate(This->jack_client))
-    //    return ASE_NotPresent;
-
-    /* connect to the hardware io */
-    if (This->wineasio_connect_to_hardware)
-    {
-        #if 0
-        for (i = 0; i < This->jack_num_input_ports && i < This->wineasio_number_inputs; i++)
-            if (strstr(jack_port_type(jack_port_by_name(This->jack_client, This->jack_input_ports[i])), "audio"))
-                jack_connect(This->jack_client, This->jack_input_ports[i], jack_port_name(This->input_channel[i].port));
-        for (i = 0; i < This->jack_num_output_ports && i < This->wineasio_number_outputs; i++)
-            if (strstr(jack_port_type(jack_port_by_name(This->jack_client, This->jack_output_ports[i])), "audio"))
-                jack_connect(This->jack_client, jack_port_name(This->output_channel[i].port), This->jack_output_ports[i]);
-        #endif
-    }
-
-    /* at this point all the connections are made and the jack process callback is outputting silence */
+    /* at this point all the connections are made and the process callback is outputting silence */
     This->asio_driver_state = Prepared;
     return ASE_OK;
 }
@@ -1427,15 +1429,11 @@ HIDDEN ASIOError STDMETHODCALLTYPE DisposeBuffers(LPWINEASIO iface)
 
     for (i = 0; i < This->wineasio_number_inputs; i++)
     {
-        This->input_channel[i].buffers[0] = NULL;
-        This->input_channel[i].buffers[1] = NULL;
-        This->input_channel[i].active = false;
+        dispose_io_port(This, &This->input_channel[i], SPA_DIRECTION_INPUT);
     }
     for (i = 0; i < This->wineasio_number_outputs; i++)
     {
-        This->output_channel[i].buffers[0] = NULL;
-        This->output_channel[i].buffers[1] = NULL;
-        This->output_channel[i].active = false;
+        dispose_io_port(This, &This->output_channel[i], SPA_DIRECTION_OUTPUT);
     }
     This->asio_active_inputs = This->asio_active_outputs = 0;
 
@@ -1786,6 +1784,119 @@ static void get_nodes_by_name(IWineASIOImpl *This) {
     }
 }
 
+static void connect_io_port(IWineASIOImpl *This, struct io_port *port, uint32_t idx, enum spa_direction dir) {
+    struct pw_node *node;
+    uint16_t dst_port_id;
+    switch (This->gui_conf.cf_io_type) {
+        case PWASIO_IO_SIMPLE:
+            switch (dir) {
+                case SPA_DIRECTION_INPUT:
+                    node = This->gui_conf.cf_io_config.simple.input;
+                    break;
+                case SPA_DIRECTION_OUTPUT:
+                    node = This->gui_conf.cf_io_config.simple.output;
+                    break;
+            }
+            if (node == PWASIO_NODE_NONE) {
+                ERR("Cannot connect inactive node\n");
+                port->active = false;
+                return;
+            }
+            if (node == PWASIO_NODE_DEFAULT) {
+                node = user_pw_get_default_node(This->pw_helper, dir);
+                if (node == NULL) {
+                    ERR("Cannot find default node\n");
+                    port->active = false;
+                    return;
+                }
+            }
+            dst_port_id = idx;
+            break;
+        case PWASIO_IO_ADVANCED: {
+            struct pwasio_ioc_advanced const *io = &This->gui_conf.cf_io_config.advanced;
+            pwasio_port_sel const *nodes;
+            uint32_t node_idx;
+            uint32_t cnt_ports = 0;
+            switch (dir) {
+                case SPA_DIRECTION_INPUT:
+                    nodes = io->inputs;
+                    cnt_ports = io->cnt_inputs;
+                    break;
+                case SPA_DIRECTION_OUTPUT:
+                    nodes = io->outputs;
+                    cnt_ports = io->cnt_outputs;
+                    break;
+            }
+            if (idx >= cnt_ports) {
+                ERR("Port doesn't exist (%u/%u)\n", idx, cnt_ports);
+            }
+            pwasio_port_get(nodes[idx], &node_idx, &dst_port_id);
+            if (node_idx == 0) {
+                node = user_pw_get_default_node(This->pw_helper, dir);
+                if (node == NULL) {
+                    ERR("Cannot find default node\n");
+                    port->active = false;
+                    return;
+                }
+            } else {
+                if (node_idx > io->cnt_nodes) {
+                    ERR("Node index is out of bounds (%u/%u)\n", node_idx - 1, io->cnt_nodes);
+                    port->active = false;
+                }
+                node = io->nodes[node_idx - 1];
+            }
+            break;
+        }
+    }
+
+    // Create the link
+    uint32_t node_id = pw_proxy_get_bound_id((struct pw_proxy *)node);
+    uint32_t link_src_node, link_src_port, link_dst_node, link_dst_port;
+    switch (dir) {
+        case SPA_DIRECTION_INPUT:
+            // ext -> port
+            link_src_node = node_id;
+            link_src_port = dst_port_id;
+            link_dst_node = pw_filter_get_node_id(This->pw_filter);
+            link_dst_port = idx;
+            break;
+        case SPA_DIRECTION_OUTPUT:
+            // port -> ext
+            link_src_node = pw_filter_get_node_id(This->pw_filter);
+            link_src_port = idx;
+            link_dst_node = node_id;
+            link_dst_port = dst_port_id;
+            break;
+    }
+    TRACE("Creating link: %u:%u -> %u:%u\n", link_src_node, link_src_port, link_dst_node, link_dst_port);
+    char props_s[4][16];
+    snprintf(props_s[0], sizeof props_s[0], "%u", link_src_node);
+    snprintf(props_s[1], sizeof props_s[1], "%u", link_src_port);
+    snprintf(props_s[2], sizeof props_s[2], "%u", link_dst_node);
+    snprintf(props_s[3], sizeof props_s[3], "%u", link_dst_port);
+    struct spa_dict_item properties[] = {
+        SPA_DICT_ITEM_INIT(PW_KEY_LINK_OUTPUT_NODE, props_s[0]),
+        SPA_DICT_ITEM_INIT(PW_KEY_LINK_OUTPUT_PORT, props_s[1]),
+        SPA_DICT_ITEM_INIT(PW_KEY_LINK_INPUT_NODE, props_s[2]),
+        SPA_DICT_ITEM_INIT(PW_KEY_LINK_INPUT_PORT, props_s[3]),
+    };
+    struct spa_dict props = SPA_DICT_INIT_ARRAY(properties);
+    user_pw_lock_loop(This->pw_helper);
+    port->link = pw_core_create_object(This->pw_core, "link-factory",
+        PW_TYPE_INTERFACE_Link, PW_VERSION_LINK, &props, 0);
+    user_pw_unlock_loop(This->pw_helper);
+}
+
+static void dispose_io_port(IWineASIOImpl *This, struct io_port *port, enum spa_direction dir) {
+    port->active = false;
+    port->buffers[0] = NULL;
+    port->buffers[1] = NULL;
+    if (port->link) {
+        pw_core_destroy(This->pw_core, port->link);
+        port->link = NULL;
+    }
+}
+
 static void parse_boolean_env(char const *env, bool *var) {
     if (!env[0])
         return;
@@ -1829,8 +1940,6 @@ static void store_config(IWineASIOImpl *This) {
     result = RegSetValueExW(hkey, value_pwasio_buffersize, 0, REG_DWORD, (LPBYTE) &This->wineasio_preferred_buffersize, sizeof(This->wineasio_preferred_buffersize));
     bool_value = This->wineasio_fixed_buffersize;
     result = RegSetValueExW(hkey, value_pwasio_buffersize_fixed, 0, REG_DWORD, (LPBYTE) &bool_value, sizeof(bool_value));
-    bool_value = This->wineasio_connect_to_hardware;
-    result = RegSetValueExW(hkey, value_pwasio_connect_to_hardware, 0, REG_DWORD, (LPBYTE) &bool_value, sizeof(bool_value));
     result = RegSetValueExW(hkey, value_pwasio_input_device, 0, REG_SZ, (LPBYTE) &This->pwasio_input_device_name, sizeof(This->pwasio_input_device_name));
     result = RegSetValueExW(hkey, value_pwasio_output_device, 0, REG_SZ, (LPBYTE) &This->pwasio_output_device_name, sizeof(This->pwasio_output_device_name));
 }
@@ -1861,8 +1970,6 @@ static VOID configure_driver(IWineASIOImpl *This)
 
     This->wineasio_number_inputs = 16;
     This->wineasio_number_outputs = 16;
-    This->wineasio_autostart_server = FALSE;
-    This->wineasio_connect_to_hardware = TRUE;
     This->wineasio_fixed_buffersize = FALSE;
     This->wineasio_preferred_buffersize = ASIO_PREFERRED_BUFFERSIZE;
 
@@ -1932,21 +2039,6 @@ static VOID configure_driver(IWineASIOImpl *This)
         size = sizeof(DWORD);
         value = This->wineasio_preferred_buffersize;
         result = RegSetValueExW(hkey, value_pwasio_buffersize, 0, REG_DWORD, (LPBYTE) &value, size);
-    }
-
-    /* connect to hardware */
-    size = sizeof(DWORD);
-    if (RegQueryValueExW(hkey, value_pwasio_connect_to_hardware, NULL, &type, (LPBYTE) &value, &size) == ERROR_SUCCESS)
-    {
-        if (type == REG_DWORD)
-            This->wineasio_connect_to_hardware = value;
-    }
-    else
-    {
-        type = REG_DWORD;
-        size = sizeof(DWORD);
-        value = This->wineasio_connect_to_hardware;
-        result = RegSetValueExW(hkey, value_pwasio_connect_to_hardware, 0, REG_DWORD, (LPBYTE) &value, size);
     }
 
     /* input device name */
@@ -2020,11 +2112,6 @@ static VOID configure_driver(IWineASIOImpl *This)
         result = strtol(environment_variable, 0, 10);
         if (errno != ERANGE)
             This->wineasio_number_outputs = result;
-    }
-
-    if (GetEnvironmentVariableA("PWASIO_CONNECT_TO_HARDWARE", environment_variable, MAX_ENVIRONMENT_SIZE))
-    {
-        parse_boolean_env(environment_variable, &This->wineasio_connect_to_hardware);
     }
 
     if (GetEnvironmentVariableA("PWASIO_BUFFERSIZE_IS_FIXED", environment_variable, MAX_ENVIRONMENT_SIZE))
