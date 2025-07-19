@@ -33,6 +33,7 @@
 #include <sys/mman.h>
 #include <pthread.h>
 #include <stdatomic.h>
+#include <assert.h>
 
 #include <jack/jack.h>
 #include <jack/thread.h>
@@ -184,7 +185,6 @@ typedef struct IWineASIOImpl
     /* ASIO stuff */
     LONG                        asio_active_inputs;
     LONG                        asio_active_outputs;
-    bool                        asio_buffer_index;
     ASIOCallbacks              *asio_callbacks;
     LONG                        asio_current_buffersize;
     INT                         asio_driver_state;
@@ -221,8 +221,6 @@ typedef struct IWineASIOImpl
 
     char                        client_name[ASIO_MAX_NAME_LENGTH];
 
-    /* jack process callback buffers */
-    //jack_default_audio_sample_t *callback_audio_buffer;
     struct io_port             *input_channel;
     struct io_port             *output_channel;
 
@@ -391,23 +389,23 @@ static void pipewire_add_buffer_callback(void *data, void *port, struct pw_buffe
     for (int idx = 0; idx < This->wineasio_number_inputs + This->wineasio_number_outputs; ++idx) {
         struct io_port *chan = &This->input_channel[idx];
         if (chan->port == port) {
-            if (chan->buffers[1]) {
-                if (chan->buffers[0]) {
+            if (chan->buffers[0]) {
+                if (chan->buffers[1]) {
                     printf("Buffers for channel %s already full!\n", chan->port_name);
                     return;
                 } else {
                     printf("Adding second buffer for channel %s\n", chan->port_name);
-                    chan->buffers[0] = buffer;
-
-                    buffer = pw_filter_dequeue_buffer(chan->port);
-                    buffer->buffer->datas[0].chunk->offset = 0;
-                    buffer->buffer->datas[0].chunk->stride = sizeof(float);
-                    buffer->buffer->datas[0].chunk->size = 0;
-                    printf("Dequeued buffer: %p\n", buffer);
+                    chan->buffers[1] = buffer;
                 }
             } else {
                 printf("Adding first buffer for channel %s\n", chan->port_name);
-                chan->buffers[1] = buffer;
+                chan->buffers[0] = buffer;
+            }
+
+            size_t req_size = sizeof(float) * This->asio_current_buffersize;
+            if (buffer->buffer->datas[0].maxsize < req_size) {
+                fprintf(stderr, "Error: buffer size too small (required: %zu)\n", req_size);
+                abort();
             }
 
             This->asio_buffers_left_to_init -= 1;
@@ -433,13 +431,19 @@ static void pipewire_process_callback(void *data, struct spa_io_position *positi
 
     //printf("process: iface:%p\n", This);
 
+    // Failsafe, just to be sure we have any active ports.
+    if (This->asio_active_inputs == 0 && This->asio_active_outputs == 0)
+        return;
+
     /* output silence if the ASIO callback isn't running yet */
     if (This->asio_driver_state != Running)
     {
-        for (idx = 0; idx < This->asio_active_outputs; ++idx) {
+        for (idx = 0; idx < This->wineasio_number_outputs; ++idx) {
+            if (!This->output_channel[idx].active)
+                continue;
             void *buffer = pw_filter_get_dsp_buffer(This->output_channel[idx].port, sample_count);
             if (buffer)
-                bzero(buffer, sizeof (jack_default_audio_sample_t) * sample_count);
+                bzero(buffer, sizeof(float) * sample_count);
         }
         return;
     }
@@ -451,6 +455,7 @@ static void pipewire_process_callback(void *data, struct spa_io_position *positi
 
     struct pw_buffer *buffer;
     struct io_port *chan;
+    int buf_idx = -1, loc_idx;
     for (idx = 0; idx < This->wineasio_number_inputs; ++idx) {
         chan = &This->input_channel[idx];
         if (!chan->active)
@@ -458,6 +463,17 @@ static void pipewire_process_callback(void *data, struct spa_io_position *positi
         //chan->buffers[This->asio_buffer_index] = pw_filter_dequeue_buffer(chan->port);
         //pw_filter_queue_buffer(chan->port, chan->buffers[This->asio_buffer_index ^ 1]);
         buffer = pw_filter_dequeue_buffer(chan->port);
+        if (buffer == chan->buffers[0]) {
+            loc_idx = 0;
+        } else {
+            assert(buffer == chan->buffers[1]);
+            loc_idx = 1;
+        }
+        if (buf_idx == -1) {
+            buf_idx = loc_idx;
+        } else if (buf_idx != loc_idx) {
+            ERR("Buffer index mismatch: expected %u, got %u\n", buf_idx, loc_idx);
+        }
         pw_filter_queue_buffer(chan->port, buffer);
     }
     for (idx = 0; idx < This->wineasio_number_outputs; ++idx) {
@@ -471,10 +487,18 @@ static void pipewire_process_callback(void *data, struct spa_io_position *positi
         buffer->buffer->datas[0].chunk->offset = 0;
         buffer->buffer->datas[0].chunk->stride = sizeof(float);
         buffer->buffer->datas[0].chunk->size = sample_count * sizeof(float);
-        if (buffer == chan->buffers[0])
-            pw_filter_queue_buffer(chan->port, chan->buffers[1]);
-        else
-            pw_filter_queue_buffer(chan->port, chan->buffers[0]);
+        if (buffer == chan->buffers[0]) {
+            loc_idx = 0;
+        } else {
+            assert(buffer == chan->buffers[1]);
+            loc_idx = 1;
+        }
+        if (buf_idx == -1) {
+            buf_idx = loc_idx;
+        } else if (buf_idx != loc_idx) {
+            ERR("Buffer index mismatch: expected %u, got %u\n", buf_idx, loc_idx);
+        }
+        pw_filter_queue_buffer(chan->port, buffer);
     }
 
     This->asio_sample_position = position->clock.position - position->offset;
@@ -498,15 +522,12 @@ static void pipewire_process_callback(void *data, struct spa_io_position *positi
                 This->asio_time.timeCode.flags |= kTcRunning;
         }
         #endif
-        This->asio_callbacks->bufferSwitchTimeInfo(&This->asio_time, This->asio_buffer_index, ASIOTrue);
+        This->asio_callbacks->bufferSwitchTimeInfo(&This->asio_time, buf_idx, ASIOTrue);
     }
     else
     { /* use the old bufferSwitch method */
-        This->asio_callbacks->bufferSwitch(This->asio_buffer_index, ASIOTrue);
+        This->asio_callbacks->bufferSwitch(buf_idx, ASIOTrue);
     }
-
-    /* swith asio buffer */
-    This->asio_buffer_index ^= 1;
 }
 
 static struct pw_filter_events const pw_filter_events = {
@@ -867,7 +888,6 @@ HIDDEN ASIOError STDMETHODCALLTYPE Start(LPWINEASIO iface)
     //    This->callback_audio_buffer[i] = 0;
 
     /* prime the callback by preprocessing one outbound ASIO bufffer */
-    This->asio_buffer_index =  0;
     This->asio_sample_position = 0;
 
     //This->asio_time_stamp = pw_filter_get_nsec(This->pw_filter);
@@ -1413,19 +1433,6 @@ HIDDEN ASIOError STDMETHODCALLTYPE CreateBuffers(LPWINEASIO iface, ASIOBufferInf
         buffer_info->buffers[1] = chan->buffers[1]->buffer->datas->data;
     }
     TRACE("%i audio channels initialized\n", This->asio_active_inputs + This->asio_active_outputs);
-
-    #if 0
-    This->callback_audio_buffer = HeapAlloc(GetProcessHeap(), 0,
-        (This->wineasio_number_inputs + This->wineasio_number_outputs) * 2 * This->asio_current_buffersize * sizeof(jack_default_audio_sample_t));
-    if (!This->callback_audio_buffer)
-    {
-        ERR("Unable to allocate %i ASIO audio buffers\n", This->wineasio_number_inputs + This->wineasio_number_outputs);
-        return ASE_NoMemory;
-    }
-    TRACE("%i ASIO audio buffers allocated (%i kB)\n", This->wineasio_number_inputs + This->wineasio_number_outputs,
-          (int) ((This->wineasio_number_inputs + This->wineasio_number_outputs) * 2 * This->asio_current_buffersize * sizeof(jack_default_audio_sample_t) / 1024));
-
-    #endif
 
     /* at this point all the connections are made and the process callback is outputting silence */
     This->asio_driver_state = Prepared;
@@ -1990,7 +1997,6 @@ static VOID configure_driver(IWineASIOImpl *This)
      * jack_num_input_ports & jack_num_output_ports are initialized in Init() */
     This->asio_active_inputs = 0;
     This->asio_active_outputs = 0;
-    This->asio_buffer_index = 0;
     This->asio_callbacks = NULL;
     This->asio_can_time_code = FALSE;
     This->asio_current_buffersize = 0;
