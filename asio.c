@@ -614,14 +614,23 @@ HIDDEN ULONG STDMETHODCALLTYPE Release(LPWINEASIO iface)
         This->asio_active_inputs = This->asio_active_outputs = 0;
         TRACE("%i IOChannel structures released\n", This->wineasio_number_inputs + This->wineasio_number_outputs);
 
-        //jack_free (This->jack_output_ports);
-        //jack_free (This->jack_input_ports);
-        //jack_client_close(This->jack_client);
-        if (This->input_channel)
+        if (This->input_channel) {
             HeapFree(GetProcessHeap(), 0, This->input_channel);
+            This->input_channel = NULL;
+        }
+
+        user_pw_lock_loop(This->pw_helper);
+        pw_filter_destroy(This->pw_filter);
+        user_pw_unlock_loop(This->pw_helper);
     }
     if (ref == 0) {
         TRACE("PipeWireASIO terminated\n\n");
+        if (This->gui)
+            pwasio_destroy_gui(This->gui);
+        if (This->pw_helper)
+            user_pw_destroy_helper(This->pw_helper);
+        if (This->input_channel)
+            HeapFree(GetProcessHeap(), 0, This->input_channel);
         This->cls_factory->lpVtbl->Release(This->cls_factory);
         HeapFree(GetProcessHeap(), 0, This);
     }
@@ -1311,6 +1320,7 @@ HIDDEN ASIOError STDMETHODCALLTYPE CreateBuffers(LPWINEASIO iface, ASIOBufferInf
         chan->active = true;
         chan->buffers[0] = NULL;
         chan->buffers[1] = NULL;
+        chan->link = NULL;
     }
 
     user_pw_lock_loop(This->pw_helper);
@@ -1460,11 +1470,9 @@ HIDDEN ASIOError STDMETHODCALLTYPE DisposeBuffers(LPWINEASIO iface)
     if (This->asio_driver_state != Prepared)
         return ASE_NotPresent;
 
-    //if (jack_deactivate(This->jack_client))
-    //    return ASE_NotPresent;
-
     This->asio_callbacks = NULL;
 
+    user_pw_lock_loop(This->pw_helper);
     for (i = 0; i < This->wineasio_number_inputs; i++)
     {
         dispose_io_port(This, &This->input_channel[i], SPA_DIRECTION_INPUT);
@@ -1474,9 +1482,8 @@ HIDDEN ASIOError STDMETHODCALLTYPE DisposeBuffers(LPWINEASIO iface)
         dispose_io_port(This, &This->output_channel[i], SPA_DIRECTION_OUTPUT);
     }
     This->asio_active_inputs = This->asio_active_outputs = 0;
-
-    //if (This->callback_audio_buffer)
-    //    HeapFree(GetProcessHeap(), 0, This->callback_audio_buffer);
+    pw_filter_disconnect(This->pw_filter);
+    user_pw_unlock_loop(This->pw_helper);
 
     This->asio_driver_state = Initialized;
     return ASE_OK;
@@ -1926,6 +1933,8 @@ static void connect_io_port(IWineASIOImpl *This, struct io_port *port, uint32_t 
 }
 
 static void dispose_io_port(IWineASIOImpl *This, struct io_port *port, enum spa_direction dir) {
+    if (!port->active)
+        return;
     port->active = false;
     port->buffers[0] = NULL;
     port->buffers[1] = NULL;
@@ -1961,7 +1970,6 @@ static const WCHAR value_pwasio_number_inputs[] = u"Number of inputs";
 static const WCHAR value_pwasio_number_outputs[] = u"Number of outputs";
 static const WCHAR value_pwasio_buffersize_fixed[] = u"Use fixed buffer size";
 static const WCHAR value_pwasio_buffersize[] = u"Buffer size";
-static const WCHAR value_pwasio_connect_to_hardware[] = u"Connect to hardware";
 static const WCHAR value_pwasio_input_device[] = u"Input device";
 static const WCHAR value_pwasio_output_device[] = u"Output device";
 
@@ -2011,7 +2019,6 @@ static VOID configure_driver(IWineASIOImpl *This)
     This->wineasio_preferred_buffersize = ASIO_PREFERRED_BUFFERSIZE;
 
     This->client_name[0] = 0;
-    //This->callback_audio_buffer = NULL;
     This->input_channel = NULL;
     This->output_channel = NULL;
 
