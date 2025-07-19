@@ -117,6 +117,14 @@ struct ProxyPtr {
 		return reinterpret_cast<Custom *>(pw_proxy_get_user_data(reinterpret_cast<struct pw_proxy *>(proxy)));
 	}
 
+	__always_inline static struct pw_proxy_events const *proxy_events() {
+		return &Custom::s_proxy_events;
+	}
+
+	inline void intall_proxy_events() const {
+		pw_proxy_add_listener(reinterpret_cast<struct pw_proxy *>(proxy), &custom()->Proxy::proxy_listener, proxy_events(), proxy);
+	}
+
 	template <typename TBase>
 	requires(std::is_base_of_v<TBase, Custom>)
 	__always_inline operator ProxyPtr<TBase>() const {
@@ -140,11 +148,16 @@ struct ProxyPtr {
 	}
 
 	__always_inline PwInterface type() const;
+
+	static void destroy_handler(void *proxy) {
+		ProxyPtr::from_bound(proxy).custom()->~Custom();
+	}
 };
 
 struct Proxy {
 	using ProxyType = struct pw_proxy;
 	PwInterface type;
+	struct spa_hook proxy_listener;
 };
 
 template <typename T>
@@ -163,6 +176,7 @@ struct Node final: Proxy {
 	std::unordered_map<uint32_t, SpaPod> params;
 
 	static struct pw_node_events const s_events;
+	static struct pw_proxy_events const s_proxy_events;
 
 	void init(ProxyPtr<Node> proxy) {
 		new (this) Node;
@@ -316,6 +330,11 @@ struct Node final: Proxy {
 	}
 };
 
+struct pw_proxy_events const Node::s_proxy_events = {
+	.version = PW_VERSION_PROXY_EVENTS,
+	.destroy = ProxyPtr<Node>::destroy_handler,
+};
+
 static void node_info_handler(void *proxy, struct pw_node_info const *info) {
 	ProxyPtr<Node>::from_bound(proxy).custom()->update(info);
 }
@@ -344,8 +363,6 @@ struct Metadata: Proxy {
 		struct pw_metadata *raw_proxy = proxy;
 		pw_metadata_add_listener(raw_proxy, &listener, &s_events, raw_proxy);
 	}
-
-	inline ~Metadata();
 };
 
 enum MetaPropResult {
@@ -374,13 +391,7 @@ struct MetadataHandler {
 	size_t num_properties;
 	// Called when specific properties were not satisfied.
 	void (*generic_prop)(ProxyPtr<Metadata> proxy, uint32_t subject, char const *key, char const *type, char const *value);
-	void (*destroy)(Metadata *self);
 };
-
-Metadata::~Metadata() {
-	if (vtable)
-		vtable->destroy(this);
-}
 
 static int meta_property_handler(void *proxy, uint32_t subject, char const *key, char const *type, char const *value) {
 	auto mproxy = ProxyPtr<Metadata>::from_bound(proxy);
@@ -497,6 +508,7 @@ struct DefaultNodes: Metadata {
 	std::string default_source;
 	std::string default_sink;
 
+	static struct pw_proxy_events const s_proxy_events;
 	static MetadataHandler const s_handler;
 
 	void init(ProxyPtr<DefaultNodes> proxy) {
@@ -504,6 +516,11 @@ struct DefaultNodes: Metadata {
 		new (this) DefaultNodes;
 		Metadata::vtable = &s_handler;
 	}
+};
+
+struct pw_proxy_events const DefaultNodes::s_proxy_events = {
+	.version = PW_VERSION_PROXY_EVENTS,
+	.destroy = ProxyPtr<DefaultNodes>::destroy_handler,
 };
 
 static char const *default_nodes_keys[] = {
@@ -579,7 +596,6 @@ MetadataHandler const DefaultNodes::s_handler = {
 	.properties = default_nodes_props,
 	.num_properties = std::size(default_nodes_props),
 	.generic_prop = nullptr,
-	.destroy = [] (Metadata *self) { static_cast<DefaultNodes *>(self)->~DefaultNodes(); },
 };
 
 struct Helper {
@@ -604,6 +620,10 @@ struct Helper {
 	struct spa_hook roundtrip = {};
 
 	~Helper() {
+		lock();
+		for (auto& proxy: bound_proxies) {
+			pw_proxy_destroy(proxy.second);
+		}
 		if (core) {
 			pw_core_disconnect(core);
 		}
@@ -613,6 +633,7 @@ struct Helper {
 		if (thread_loop) {
 			pw_thread_loop_destroy(thread_loop);
 		}
+		unlock();
 	}
 
 	void stop() {
@@ -672,6 +693,7 @@ static void registry_global_handler(
 			auto proxy = ProxyPtr<Node>::from_bound(
 				pw_registry_bind(This->registry, id, type, std::min(version, (uint32_t)PW_VERSION_NODE), sizeof(Node)));
 			proxy.custom()->init(proxy);
+			proxy.intall_proxy_events();
 			This->bound_proxies.emplace(id, proxy);
 			This->unlock();
 			break;
@@ -682,6 +704,7 @@ static void registry_global_handler(
 				auto proxy = ProxyPtr<DefaultNodes>::from_bound(
 					pw_registry_bind(This->registry, id, type, std::min(version, (uint32_t)PW_VERSION_METADATA), sizeof(DefaultNodes)));
 				proxy.custom()->init(proxy);
+				proxy.intall_proxy_events();
 				This->bound_proxies.emplace(id, proxy);
 				if (This->default_nodes) {
 					std::puts("New default nodes object? Overriding old one.");
@@ -700,16 +723,13 @@ static void registry_global_remove_handler(void *data, uint32_t id) {
 	ProxyPtr<Proxy> global;
 	This->lock();
 	switch (This->get_proxy(id, global)) {
-		case PwInterface::Node:
-			global.to_derived<Node>().custom()->~Node();
-			goto destroy_proxy;
 		case PwInterface::Metadata:
 			if (This->default_nodes == global) {
 				This->default_nodes = nullptr;
 			}
-			global.to_derived<Metadata>().custom()->~Metadata();
 			goto destroy_proxy;
 
+		case PwInterface::Node:
 		destroy_proxy:
 			This->bound_proxies.erase(id);
 			pw_proxy_destroy(global);
