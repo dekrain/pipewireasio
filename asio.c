@@ -40,6 +40,8 @@
 #include <spa/param/audio/format-utils.h>
 #include <spa/param/buffers.h>
 #include <spa/pod/builder.h>
+#include <spa/param/latency-utils.h>
+#include <spa/param/latency.h>
 #include <spa/utils/dict.h>
 #include <pipewire/core.h>
 #include <pipewire/context.h>
@@ -79,7 +81,7 @@ WINE_DEFAULT_DEBUG_CHANNEL(asio);
 #define MAX_ENVIRONMENT_SIZE        6
 #define ASIO_MAX_NAME_LENGTH        32
 #define ASIO_MINIMUM_BUFFERSIZE     16
-#define ASIO_MAXIMUM_BUFFERSIZE     8192
+#define ASIO_MAXIMUM_BUFFERSIZE     0x40000
 #define ASIO_PREFERRED_BUFFERSIZE   1024
 
 #define ASIO_LONG(typ, x) ({ uint64_t __long_val = (x); (typ) { .lo = (uint32_t)__long_val, .hi = (uint32_t)(__long_val >> 32) }; })
@@ -357,7 +359,7 @@ struct {
 static void pipewire_state_changed_callback(void *data, enum pw_filter_state from, enum pw_filter_state to, char const *error) {
     IWineASIOImpl *This = (IWineASIOImpl*)data;
 
-    printf("state_chaanged: iface:%p state changed from %s to %s", This, pw_filter_state_as_string(from), pw_filter_state_as_string(to));
+    printf("state_changed: iface:%p state changed from %s to %s", This, pw_filter_state_as_string(from), pw_filter_state_as_string(to));
     if (error) {
         printf(": ERROR %s\n", error);
     } else {
@@ -440,6 +442,11 @@ static void pipewire_process_callback(void *data, struct spa_io_position *positi
                 bzero(buffer, sizeof (jack_default_audio_sample_t) * sample_count);
         }
         return;
+    }
+
+    if (sample_count != (size_t)This->asio_current_buffersize) {
+        //ERR("Clock quantum (%zu) doesn't match set buffer size (%u)\n", sample_count, This->asio_current_buffersize);
+        sample_count = (size_t)This->asio_current_buffersize;
     }
 
     struct pw_buffer *buffer;
@@ -1299,13 +1306,37 @@ HIDDEN ASIOError STDMETHODCALLTYPE CreateBuffers(LPWINEASIO iface, ASIOBufferInf
         .channels = This->asio_active_outputs,
     );
 
+    struct spa_latency_info latency = {
+        .direction = SPA_DIRECTION_OUTPUT,
+        .min_quantum = 0.0f,
+        .min_rate = This->asio_current_buffersize,
+    };
+
     struct spa_pod const *connect_params[] = {
         spa_format_audio_raw_build(&pod_builder, SPA_PARAM_EnumFormat, &format),
+        spa_latency_build(&pod_builder, SPA_PARAM_Latency, &latency),
     };
 
     This->asio_buffers_left_to_init = 2 * (This->asio_active_inputs + This->asio_active_outputs);
     pthread_barrier_init(&This->asio_buffers_filled, NULL, 2);
     pthread_barrier_init(&This->pw_filter_bound, NULL, 2);
+
+    char latency_str[16];
+    snprintf(latency_str, sizeof latency_str, "%u/%u", This->asio_current_buffersize, format.rate);
+    char rate_str[16];
+    snprintf(rate_str, sizeof rate_str, "1/%u", format.rate);
+    char quantum_str[16];
+    snprintf(quantum_str, sizeof quantum_str, "%u", This->asio_current_buffersize);
+    struct spa_dict_item props[] = {
+        {PW_KEY_NODE_LATENCY, latency_str},
+        {PW_KEY_NODE_RATE, rate_str},
+        {PW_KEY_NODE_FORCE_RATE, "0"},
+        {PW_KEY_NODE_LOCK_RATE, "true"},
+        {PW_KEY_NODE_FORCE_QUANTUM, quantum_str},
+        {PW_KEY_NODE_LOCK_QUANTUM, "true"},
+    };
+    struct spa_dict prop_dict = SPA_DICT_INIT_ARRAY(props);
+    pw_filter_update_properties(This->pw_filter, NULL, &prop_dict);
 
     if (pw_filter_connect(This->pw_filter, PW_FILTER_FLAG_RT_PROCESS, connect_params, ARRAYSIZE(connect_params)) < 0) {
         ERR("Failed to setup the filter node\n");
