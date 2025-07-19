@@ -135,6 +135,8 @@ that overrides the JACK client name derived from the program name.
 #### PipeWire version: `pipewireasioXX.dll`
 
 #### 0.2.0
+* 19-JUL-2025: Make buffer index selection more reliable
+* 19-JUL-2025: Ensure proper buffer size and sample rate gets selected
 * 18-JUL-2025: Automatic I/O linking in the ASIO driver
 * April  2025: Ground work for node I/O configuration
 
