@@ -28,10 +28,10 @@
        <item row="0" column="1">
         <widget class="QComboBox" name="bufferSize">
          <property name="focusPolicy">
-          <enum>Qt::StrongFocus</enum>
+          <enum>Qt::FocusPolicy::StrongFocus</enum>
          </property>
          <property name="inputMethodHints">
-          <set>Qt::ImhDigitsOnly</set>
+          <set>Qt::InputMethodHint::ImhDigitsOnly</set>
          </property>
          <property name="editable">
           <bool>true</bool>
@@ -64,7 +64,7 @@
          </item>
          <item>
           <property name="text">
-           <string notr="true">2024</string>
+           <string notr="true">2048</string>
           </property>
          </item>
         </widget>
@@ -165,7 +165,7 @@
    <item>
     <widget class="QDialogButtonBox" name="buttonBox">
      <property name="standardButtons">
-      <set>QDialogButtonBox::Cancel|QDialogButtonBox::Ok</set>
+      <set>QDialogButtonBox::StandardButton::Cancel|QDialogButtonBox::StandardButton::Ok</set>
      </property>
     </widget>
    </item>
@@ -229,8 +229,8 @@
    <slot>bufferSizeSet(QString)</slot>
    <hints>
     <hint type="sourcelabel">
-     <x>238</x>
-     <y>23</y>
+     <x>187</x>
+     <y>31</y>
     </hint>
     <hint type="destinationlabel">
      <x>187</x>
@@ -245,8 +245,8 @@
    <slot>inputDeviceSelected(int)</slot>
    <hints>
     <hint type="sourcelabel">
-     <x>300</x>
-     <y>94</y>
+     <x>201</x>
+     <y>113</y>
     </hint>
     <hint type="destinationlabel">
      <x>276</x>
@@ -261,8 +261,8 @@
    <slot>outputDeviceSelected(int)</slot>
    <hints>
     <hint type="sourcelabel">
-     <x>253</x>
-     <y>122</y>
+     <x>201</x>
+     <y>151</y>
     </hint>
     <hint type="destinationlabel">
      <x>308</x>
@@ -309,8 +309,8 @@
    <slot>outputSelectorOpened()</slot>
    <hints>
     <hint type="sourcelabel">
-     <x>214</x>
-     <y>120</y>
+     <x>201</x>
+     <y>151</y>
     </hint>
     <hint type="destinationlabel">
      <x>913</x>
@@ -325,8 +325,8 @@
    <slot>outputSelectorClosed()</slot>
    <hints>
     <hint type="sourcelabel">
-     <x>333</x>
-     <y>123</y>
+     <x>201</x>
+     <y>151</y>
     </hint>
     <hint type="destinationlabel">
      <x>33</x>

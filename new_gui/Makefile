@@ -25,15 +25,15 @@ $(BUILD_DIR)/libpwasio_gui.so: $(call objs,$(COMMON_OBJS) gui.o)
 	$(CXX) -o $@ -shared $(LFLAGS) $^ $(BUILD_DIR)/$(wineasio_dll_MODULE).so
 endif
 
-device_selector.o: ui_device_selector.hpp
-dialog.o: ui_dialog.hpp
+device_selector.cpp: ui_device_selector.hpp
+dialog.cpp: ui_dialog.hpp
 
 QT_CFLAGS = -isystem /usr/include/qt
 PW_CFLAGS = -isystem /usr/include/pipewire-0.3 -isystem /usr/include/spa-0.2
 
-dialog.o: dialog.moc
-device_selector.o: device_selector.moc
-device_chooser.o: device_chooser.moc
+dialog.cpp: dialog.moc
+device_selector.cpp: device_selector.moc
+device_chooser.cpp: device_chooser.moc
 
 $(BUILD_DIR)/%.o: %.cpp
 	@$(shell mkdir -p $(BUILD_DIR))

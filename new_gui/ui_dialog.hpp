@@ -1,7 +1,7 @@
 /********************************************************************************
 ** Form generated from reading UI file 'dialog.ui'
 **
-** Created by: Qt User Interface Compiler version 5.15.16
+** Created by: Qt User Interface Compiler version 5.15.17
 **
 ** WARNING! All changes made in this file will be lost when recompiling UI file!
 ********************************************************************************/
@@ -72,10 +72,10 @@ public:
         bufferSize->addItem(QString::fromUtf8("384"));
         bufferSize->addItem(QString::fromUtf8("512"));
         bufferSize->addItem(QString::fromUtf8("1024"));
-        bufferSize->addItem(QString::fromUtf8("2024"));
+        bufferSize->addItem(QString::fromUtf8("2048"));
         bufferSize->setObjectName(QString::fromUtf8("bufferSize"));
-        bufferSize->setFocusPolicy(Qt::StrongFocus);
-        bufferSize->setInputMethodHints(Qt::ImhDigitsOnly);
+        bufferSize->setFocusPolicy(Qt::FocusPolicy::StrongFocus);
+        bufferSize->setInputMethodHints(Qt::InputMethodHint::ImhDigitsOnly);
         bufferSize->setEditable(true);
         bufferSize->setCurrentText(QString::fromUtf8("256"));
         bufferSize->setPlaceholderText(QString::fromUtf8(""));
@@ -158,7 +158,7 @@ public:
 
         buttonBox = new QDialogButtonBox(PwAsioDialog);
         buttonBox->setObjectName(QString::fromUtf8("buttonBox"));
-        buttonBox->setStandardButtons(QDialogButtonBox::Cancel|QDialogButtonBox::Ok);
+        buttonBox->setStandardButtons(QDialogButtonBox::StandardButton::Cancel|QDialogButtonBox::StandardButton::Ok);
 
         verticalLayout_3->addWidget(buttonBox);
 

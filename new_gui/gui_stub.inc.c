@@ -56,6 +56,8 @@ static void __gui_loader_load_lib() {
 		return;
 	}
 
+	#undef GUI_LOADER_LOAD_FUNC
+
 	__gui_loader_funcs.init = true;
 }
 

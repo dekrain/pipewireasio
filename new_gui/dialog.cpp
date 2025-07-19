@@ -34,6 +34,10 @@ void PwAsioDialog::setBufferSize(uint32_t newBufferSize) {
 	ui.bufferSize->setCurrentText(QString::asprintf("%u", newBufferSize));
 }
 
+int PwAsioDialog::getIOConfigurationType() const {
+	return ui.io_config->currentIndex();
+}
+
 void PwAsioDialog::layoutButtonClicked([[maybe_unused]] QAbstractButton *button) {
 	//int bid = layoutGroup->id(button);
 	//printf("[DBG] Button clicked: %d\n", bid);

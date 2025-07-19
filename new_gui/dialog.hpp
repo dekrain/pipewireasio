@@ -4,6 +4,7 @@
 #include <QtWidgets/QAbstractButton>
 
 #include "ui_dialog.hpp"
+#include "device_chooser.hpp"
 #include "device_selector.hpp"
 
 #include "../pw_helper.hpp"
@@ -19,6 +20,11 @@ class PwAsioDialog : public QDialog {
 
 	inline uint32_t getBufferSize() const { return bufferSize; };
 	void setBufferSize(uint32_t bufferSize);
+
+	int getIOConfigurationType() const;
+
+	PwIODeviceChooser const& getSimpleInputChooser() const { return *ui.input_devices; }
+	PwIODeviceChooser const& getSimpleOutputChooser() const { return *ui.output_devices; }
 
 	private slots:
 	void layoutButtonClicked(QAbstractButton *button);

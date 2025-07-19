@@ -10,6 +10,7 @@ PwIODeviceChooser::~PwIODeviceChooser() = default;
 void PwIODeviceChooser::showPopup() {
 	emit listOpened();
 	clear();
+	addItem("<none>");
 	addItem("<default>");
 	for (auto& item : availableDevices) {
 		addItem(item.name);
@@ -18,7 +19,7 @@ void PwIODeviceChooser::showPopup() {
 }
 
 void PwIODeviceChooser::hidePopup() {
-	deviceSelected = currentIndex();
+	deviceSelected = static_cast<uint32_t>(currentIndex()) - 1;
 	emit listClosed();
 	QComboBox::hidePopup();
 }

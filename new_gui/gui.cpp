@@ -14,6 +14,14 @@ enum class GuiState {
 	Stopped,
 };
 
+static pwasio_node_or_default get_pwio_node(PwIODeviceChooser const& picker) {
+	if (picker.deviceSelected == 0)
+		return PWASIO_NODE_DEFAULT;
+	if (picker.deviceSelected == ~0U)
+		return PWASIO_NODE_NONE;
+	return picker.availableDevices[picker.deviceSelected - 1].node;
+}
+
 struct pwasio_gui {
 	struct pwasio_gui_conf *conf;
 	PwAsioDialog *dialog;
@@ -53,6 +61,22 @@ struct pwasio_gui {
 
 	void apply_config() {
 		conf->cf_buffer_size = dialog->getBufferSize();
+		conf->cf_io_type = static_cast<pwasio_io_config>(dialog->getIOConfigurationType());
+		switch (conf->cf_io_type) {
+			case PWASIO_IO_SIMPLE:
+				conf->cf_io_config.simple.input  = get_pwio_node(dialog->getSimpleInputChooser());
+				conf->cf_io_config.simple.output = get_pwio_node(dialog->getSimpleOutputChooser());
+				break;
+			case PWASIO_IO_ADVANCED:
+				// TODO
+				conf->cf_io_config.advanced.nodes = nullptr;
+				conf->cf_io_config.advanced.cnt_nodes = 0;
+				conf->cf_io_config.advanced.cnt_inputs = 0;
+				conf->cf_io_config.advanced.cnt_outputs = 0;
+				conf->cf_io_config.advanced.inputs = nullptr;
+				conf->cf_io_config.advanced.outputs = nullptr;
+				break;
+		}
 		conf->apply_config(conf);
 	}
 };

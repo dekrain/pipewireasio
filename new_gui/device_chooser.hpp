@@ -17,6 +17,7 @@ class PwIODeviceChooser: public QComboBox {
 	~PwIODeviceChooser() override;
 
 	// 0 for default and 1.. from the list
+	// ~0 = deactivated
 	uint32_t deviceSelected;
 
 	std::vector<DeviceInfo> availableDevices;
