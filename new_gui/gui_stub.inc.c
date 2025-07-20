@@ -18,6 +18,7 @@ struct __gui_lib_funcs {
 	bool init;
 	struct pwasio_gui *(*pwasio_init_gui)(struct pwasio_gui_conf *conf);
 	void (*pwasio_destroy_gui)(struct pwasio_gui *gui);
+	void (*pwasio_gui_focus)(struct pwasio_gui *gui);
 };
 
 static struct __gui_lib_funcs __gui_loader_funcs;
@@ -51,6 +52,7 @@ static void __gui_loader_load_lib() {
 
 	GUI_LOADER_LOAD_FUNC(pwasio_init_gui)
 	GUI_LOADER_LOAD_FUNC(pwasio_destroy_gui)
+	GUI_LOADER_LOAD_FUNC(pwasio_gui_focus)
 	if (!load_success) {
 		fprintf(stderr, "ERROR: Failed to load functions from GUI lib: %s\n", dlerror());
 		return;
@@ -79,4 +81,14 @@ GUI_API void pwasio_destroy_gui(struct pwasio_gui *gui) {
 		return;
 
 	return __gui_loader_funcs.pwasio_destroy_gui(gui);
+}
+
+GUI_API void pwasio_gui_focus(struct pwasio_gui *gui)  {
+	if (!__gui_loader_funcs.init)
+		__gui_loader_load_lib();
+
+	if (!__gui_loader_funcs.init)
+		return;
+
+	return __gui_loader_funcs.pwasio_gui_focus(gui);
 }

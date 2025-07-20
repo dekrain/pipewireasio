@@ -77,6 +77,7 @@ struct pwasio_gui_conf {
 // The config must persist for as long as the GUI is live.
 GUI_API struct pwasio_gui *pwasio_init_gui(struct pwasio_gui_conf *conf);
 GUI_API void pwasio_destroy_gui(struct pwasio_gui *gui);
+GUI_API void pwasio_gui_focus(struct pwasio_gui *gui);
 
 #define GUI_LIB_NAME "libpwasio_gui.so"
 

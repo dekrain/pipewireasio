@@ -1504,15 +1504,24 @@ HIDDEN ASIOError STDMETHODCALLTYPE ControlPanel(LPWINEASIO iface)
 
     if (This->gui == NULL) {
         This->gui = pwasio_init_gui(&This->gui_conf);
+    } else {
+        pwasio_gui_focus(This->gui);
     }
     return ASE_OK;
+}
+
+HIDDEN int GuiClosedLate(struct spa_loop *loop, bool async, uint32_t seq, void const *data, size_t size, void *user)
+{
+    IWineASIOImpl   *This = (IWineASIOImpl *)user;
+    pwasio_destroy_gui(This->gui);
+    This->gui = NULL;
+    return 0;
 }
 
 HIDDEN void GuiClosed(struct pwasio_gui_conf *conf)
 {
     IWineASIOImpl   *This = (IWineASIOImpl *)conf->user;
-    pwasio_destroy_gui(This->gui);
-    This->gui = NULL;
+    pw_loop_invoke(This->pw_loop, GuiClosedLate, 0, NULL, 0, false, This);
 }
 
 HIDDEN void GuiApplyConfig(struct pwasio_gui_conf *conf)

@@ -34,6 +34,7 @@ PW_CFLAGS = -isystem /usr/include/pipewire-0.3 -isystem /usr/include/spa-0.2
 dialog.cpp: dialog.moc
 device_selector.cpp: device_selector.moc
 device_chooser.cpp: device_chooser.moc
+gui.cpp: gui_priv.moc
 
 $(BUILD_DIR)/%.o: %.cpp
 	@$(shell mkdir -p $(BUILD_DIR))
