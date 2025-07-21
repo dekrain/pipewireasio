@@ -135,6 +135,10 @@ that overrides the JACK client name derived from the program name.
 #### PipeWire version: `pipewireasioXX.dll`
 
 #### 0.2.0
+* 21-JUL-2025: Apply driver settings from the dialog and restart the driver correctly <small>(FINALLY after a loooooooong debugging session due to debugging with Wine being tricky)</small>
+* 20-JUL-2025: Use a dedicated thread for running all dialog windows
+* 19-JUL-2025: Cleaner shutdown of the driver
+* 19-JUL-2025: GUI simple mode configuration support
 * 19-JUL-2025: Make buffer index selection more reliable
 * 19-JUL-2025: Ensure proper buffer size and sample rate gets selected
 * 18-JUL-2025: Automatic I/O linking in the ASIO driver
