@@ -218,6 +218,7 @@ typedef struct IWineASIOImpl
 
     struct pwasio_gui          *gui;
     struct pwasio_gui_conf      gui_conf;
+    bool                        gui_reset_req;
 
     char                        client_name[ASIO_MAX_NAME_LENGTH];
 
@@ -304,6 +305,7 @@ static inline int  jack_sample_rate_callback (jack_nframes_t nframes, void *arg)
  */
 
 HRESULT WINAPI  WineASIOCreateInstance(REFIID riid, LPVOID *ppobj, IUnknown *cls_factory);
+static  void    request_reset(IWineASIOImpl *This);
 static  void    store_config(IWineASIOImpl *This);
 static  VOID    configure_driver(IWineASIOImpl *This);
 static  void    get_nodes_by_name(IWineASIOImpl *This);
@@ -528,6 +530,14 @@ static void pipewire_process_callback(void *data, struct spa_io_position *positi
     { /* use the old bufferSwitch method */
         This->asio_callbacks->bufferSwitch(buf_idx, ASIOTrue);
     }
+
+    if (This->gui_reset_req && !This->gui) {
+        store_config(This);
+        TRACE("Requesting reset\n");
+        request_reset(This);
+        TRACE("Reset has been requested\n");
+        This->gui_reset_req = false;
+    }
 }
 
 static struct pw_filter_events const pw_filter_events = {
@@ -748,6 +758,7 @@ HIDDEN ASIOBool STDMETHODCALLTYPE Init(LPWINEASIO iface, void *sysRef)
     }
 
     This->gui = NULL;
+    This->gui_reset_req = false;
     This->gui_conf.user = This;
     This->gui_conf.closed = GuiClosed;
     This->gui_conf.apply_config = GuiApplyConfig;
@@ -1528,7 +1539,8 @@ HIDDEN void GuiApplyConfig(struct pwasio_gui_conf *conf)
 {
     IWineASIOImpl   *This = (IWineASIOImpl *)conf->user;
     This->wineasio_preferred_buffersize = conf->cf_buffer_size;
-    store_config(This);
+    This->gui_reset_req = true;
+    // Reminder: DO NOT PUT WINDOWS CALLS IN AN UNMANAGED THREAD!! (i.e. the settings GUI thread)
 }
 
 HIDDEN void GuiLoadConfig(struct pwasio_gui_conf *conf)
@@ -1645,8 +1657,7 @@ static inline int jack_buffer_size_callback(jack_nframes_t nframes, void *arg)
     if(This->asio_driver_state != Running)
         return 0;
 
-    if (This->asio_callbacks->asioMessage(kAsioSelectorSupported, kAsioResetRequest, 0 , 0))
-        This->asio_callbacks->asioMessage(kAsioResetRequest, 0, 0, 0);
+    request_reset(This);
     return 0;
 }
 
@@ -1782,6 +1793,11 @@ static DWORD WINAPI jack_thread_creator_helper(LPVOID arg)
     SetEvent(jack_thread_creator_privates.jack_callback_thread_created);
     jack_thread_creator_privates.jack_callback_thread(jack_thread_creator_privates.arg);
     return 0;
+}
+
+static void request_reset(IWineASIOImpl *This) {
+    if (This->asio_callbacks->asioMessage(kAsioSelectorSupported, kAsioResetRequest, 0 , 0))
+        This->asio_callbacks->asioMessage(kAsioResetRequest, 0, 0, 0);
 }
 
 static void get_nodes_by_name(IWineASIOImpl *This) {
