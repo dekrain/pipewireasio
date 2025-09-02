@@ -15,6 +15,7 @@
 
 #include <spa/utils/dict.h>
 #include <spa/utils/json.h>
+#include <spa/utils/result.h>
 #include <spa/pod/builder.h>
 #include <pipewire/context.h>
 #include <pipewire/core.h>
@@ -755,9 +756,30 @@ static void roundtrip_handler(void *data, uint32_t id, int seq) {
 	This->init_state.notify_all();
 }
 
+static void ping_handler(void *data, uint32_t id, int seq) {
+	Helper *This = reinterpret_cast<Helper *>(data);
+	std::puts("[DEBUG] Received ping");
+	pw_core_pong(This->core, id, seq);
+}
+
+static void error_handler(void *data, uint32_t id, int seq, int res, const char *message) {
+	Helper *This = reinterpret_cast<Helper *>(data);
+	char const *obj_type = nullptr;
+	// id is a local proxy ID, to index into bound_proxies, get the global ID first
+	struct pw_proxy *proxy = pw_core_find_proxy(This->core, id);
+	uint32_t global_id = PW_ID_ANY;
+	if (proxy) {
+		obj_type = pw_proxy_get_type(proxy, nullptr);
+		global_id = pw_proxy_get_bound_id(proxy);
+	}
+	std::fprintf(stderr, "[ERROR] PipeWire error on object %u (%s, global %d): %s: %s\n", id, obj_type, global_id, message, spa_strerror(res));
+}
+
 static struct pw_core_events const s_core_events = {
 	.version = PW_VERSION_CORE_EVENTS,
 	.done = roundtrip_handler,
+	.ping = ping_handler,
+	.error = error_handler,
 };
 
 Helper *create_helper(int argc, char **argv, InitArgs const *conf) {
