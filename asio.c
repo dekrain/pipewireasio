@@ -784,7 +784,7 @@ HIDDEN ASIOBool STDMETHODCALLTYPE Init(LPWINEASIO iface, void *sysRef)
     This->pw_filter = pw_filter_new(This->pw_core, This->client_name, pw_properties_new(
         PW_KEY_MEDIA_TYPE, "Audio",
         PW_KEY_MEDIA_ROLE, "DSP",
-        PW_KEY_MEDIA_CLASS, "Stream/Audio",
+        PW_KEY_MEDIA_CLASS, "Audio/Duplex",
         PW_KEY_MEDIA_CATEGORY, "Duplex",
         NULL
     ));
@@ -1344,18 +1344,29 @@ HIDDEN ASIOError STDMETHODCALLTYPE CreateBuffers(LPWINEASIO iface, ASIOBufferInf
     struct spa_audio_info_raw format = SPA_AUDIO_INFO_RAW_INIT(
         .format = SPA_AUDIO_FORMAT_F32,
         .rate = This->asio_sample_rate,
-        .channels = This->asio_active_outputs,
+        .channels = 1,
     );
 
-    struct spa_latency_info latency = {
+    struct spa_latency_info latency_in = {
+        .direction = SPA_DIRECTION_INPUT,
+        .min_quantum = 0.0f,
+        .min_rate = This->asio_current_buffersize,
+    };
+
+    struct spa_latency_info latency_out = {
         .direction = SPA_DIRECTION_OUTPUT,
         .min_quantum = 0.0f,
         .min_rate = This->asio_current_buffersize,
     };
 
-    struct spa_pod const *connect_params[] = {
-        spa_format_audio_raw_build(&pod_builder, SPA_PARAM_EnumFormat, &format),
-        spa_latency_build(&pod_builder, SPA_PARAM_Latency, &latency),
+    struct spa_pod const *port_params_in[] = {
+        //spa_format_audio_raw_build(&pod_builder, SPA_PARAM_EnumFormat, &format),
+        spa_latency_build(&pod_builder, SPA_PARAM_Latency, &latency_in),
+    };
+
+    struct spa_pod const *port_params_out[] = {
+        //spa_format_audio_raw_build(&pod_builder, SPA_PARAM_EnumFormat, &format),
+        spa_latency_build(&pod_builder, SPA_PARAM_Latency, &latency_out),
     };
 
     This->asio_buffers_left_to_init = 2 * (This->asio_active_inputs + This->asio_active_outputs);
@@ -1379,7 +1390,20 @@ HIDDEN ASIOError STDMETHODCALLTYPE CreateBuffers(LPWINEASIO iface, ASIOBufferInf
     struct spa_dict prop_dict = SPA_DICT_INIT_ARRAY(props);
     pw_filter_update_properties(This->pw_filter, NULL, &prop_dict);
 
-    if (pw_filter_connect(This->pw_filter, PW_FILTER_FLAG_RT_PROCESS, connect_params, ARRAYSIZE(connect_params)) < 0) {
+    for (i = 0; i < This->wineasio_number_inputs; ++i) {
+        if (pw_filter_update_params(This->pw_filter, This->input_channel[i].port, port_params_in, ARRAYSIZE(port_params_in)) < 0) {
+            ERR("Failed to setup input port params\n");
+            return ASE_HWMalfunction;
+        }
+    }
+    for (i = 0; i < This->wineasio_number_outputs; ++i) {
+        if (pw_filter_update_params(This->pw_filter, This->output_channel[i].port, port_params_out, ARRAYSIZE(port_params_out)) < 0) {
+            ERR("Failed to setup output port params\n");
+            return ASE_HWMalfunction;
+        }
+    }
+
+    if (pw_filter_connect(This->pw_filter, PW_FILTER_FLAG_RT_PROCESS, NULL, 0) < 0) {
         ERR("Failed to setup the filter node\n");
         return ASE_HWMalfunction;
     }
