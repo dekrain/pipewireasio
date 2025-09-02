@@ -512,8 +512,8 @@ struct DefaultNodes: Metadata {
 	static MetadataHandler const s_handler;
 
 	void init(ProxyPtr<DefaultNodes> proxy) {
-		Metadata::init(proxy);
 		new (this) DefaultNodes;
+		Metadata::init(proxy);
 		Metadata::vtable = &s_handler;
 	}
 };
