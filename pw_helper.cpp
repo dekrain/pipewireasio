@@ -186,7 +186,7 @@ struct Node final: Proxy {
 		listener = {};
 		struct pw_node *raw_proxy = proxy;
 		pw_node_add_listener(raw_proxy, &listener, &s_events, raw_proxy);
-		pw_node_enum_params(raw_proxy, 0, PW_ID_ANY, 0, ~(uint32_t)0, nullptr);
+		//pw_node_enum_params(raw_proxy, 0, /* param_id */, 0, ~(uint32_t)0, nullptr);
 	}
 
 	// Bad name
