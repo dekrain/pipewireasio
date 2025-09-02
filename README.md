@@ -134,11 +134,13 @@ that overrides the JACK client name derived from the program name.
 
 #### PipeWire version: `pipewireasioXX.dll`
 
-#### 0.2.0
+#### 0.2.1
 * 02-SEP-2025: Apply latency to individual input and output ports
 * 02-SEP-2025: Drop RAW audio format, fixing hanging of the graph
 * 02-SEP-2025: Assign params individually to ports
 * 02-SEP-2025: Use the proper media class
+
+#### 0.2.0
 * 21-JUL-2025: Apply driver settings from the dialog and restart the driver correctly <small>(FINALLY after a loooooooong debugging session due to debugging with Wine being tricky)</small>
 * 20-JUL-2025: Use a dedicated thread for running all dialog windows
 * 19-JUL-2025: Cleaner shutdown of the driver

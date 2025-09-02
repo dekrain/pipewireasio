@@ -2060,7 +2060,7 @@ static VOID configure_driver(IWineASIOImpl *This)
     This->asio_driver_state = Loaded;
     This->asio_sample_rate = 0;
     This->asio_time_info_mode = FALSE;
-    This->asio_version = 20;
+    This->asio_version = 21;
 
     This->wineasio_number_inputs = 16;
     This->wineasio_number_outputs = 16;
