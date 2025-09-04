@@ -1,15 +1,16 @@
 #!/usr/bin/make -f
-# Makefile for WineASIO #
+# Makefile for PipeWireASIO #
 # --------------------- #
 # Created by falkTX
+# Contributed by DeKrain
 #
 
-VERSION = 1.2.0
+VERSION = 0.2.1
 
 PREFIX ?= /usr
 
 all:
-	@echo "error: you must pass '32' or '64' as an argument to this Makefile in order to build WineASIO"
+	@echo "error: you must pass '32' or '64' as an argument to this Makefile in order to build PipeWireASIO"
 
 # ---------------------------------------------------------------------------------------------------------------------
 
@@ -46,7 +47,7 @@ clean:
 # ---------------------------------------------------------------------------------------------------------------------
 
 tarball: clean
-	rm -f ../wineasio-$(VERSION).tar.gz
+	rm -f ../pipewireasio-$(VERSION).tar.gz
 	tar -c -z \
 		--exclude=".git*" \
 		--exclude=".travis*" \
@@ -61,8 +62,8 @@ tarball: clean
 		--exclude=rtaudio/"*.in" \
 		--exclude=rtaudio/"*.sh" \
 		--exclude=rtaudio/"*.txt" \
-		--transform='s,^\.,wineasio-$(VERSION),' \
-		-f ../wineasio-$(VERSION).tar.gz .
+		--transform='s,^\.,pipewireasio-$(VERSION),' \
+		-f ../pipewireasio-$(VERSION).tar.gz .
 
 # ---------------------------------------------------------------------------------------------------------------------
 

@@ -12,7 +12,7 @@ ifeq ($(M),)
 $(error incorrect use of Makefile, M var is missing)
 endif
 
-export wineasio_dll_MODULE = pipewireasio$(M).dll
+export ASIO_DLL_MODULE = pipewireasio$(M).dll
 
 libpwasio_gui:
 	$(MAKE) -C new_gui ../build$(M)/libpwasio_gui.so
@@ -20,13 +20,12 @@ libpwasio_gui:
 build$(M)/pw_helper.o: pw_helper.cpp
 	$(MAKE) -C new_gui ../build$(M)/pw_helper.o
 
-PREFIX                = /usr
-SRCDIR                = .
-DLLS                  = $(wineasio_dll_MODULE) $(wineasio_dll_MODULE).so
+PREFIX    = /usr
+SRCDIR    = .
+DLLS      = $(ASIO_DLL_MODULE) $(ASIO_DLL_MODULE).so
 
 ### Tools
 
-CC        = gcc
 WINE      = wine
 WINEBUILD = winebuild
 WINECXX   = wineg++
@@ -40,7 +39,7 @@ endif
 CEXTRA                = -m$(M) -D_REENTRANT -fPIC -Wall -pipe -std=gnu11 -D_GNU_SOURCE
 CEXTRA               += -fno-strict-aliasing -Wdeclaration-after-statement -Wwrite-strings -Wpointer-arith
 CEXTRA               += -Werror=implicit-function-declaration
-CEXTRA               += '-DDRIVER_DLL="$(wineasio_dll_MODULE)"'
+CEXTRA               += '-DDRIVER_DLL="$(ASIO_DLL_MODULE)"'
 RCEXTRA               =
 INCLUDE_PATH          = -I. -Irtaudio/include
 INCLUDE_PATH         += -I$(PREFIX)/include/pipewire-0.3
@@ -69,35 +68,28 @@ endif
 
 ### wineasio.dll settings
 
-wineasio_dll_C_SRCS   = asio.c \
-			main.c \
-			regsvr.c
-wineasio_dll_LDFLAGS  = -shared \
-			-m$(M) \
-			-mnocygwin \
-			wineasio.dll.spec \
-			-L/usr/lib$(M)/wine \
-			-L/usr/lib/wine \
-			-L/usr/lib/$(ARCH)-linux-gnu/wine \
-			-L/usr/lib/$(ARCH)-linux-gnu/wine-development \
-			-L/opt/wine-stable/lib \
-			-L/opt/wine-stable/lib/wine \
-			-L/opt/wine-stable/lib$(M) \
-			-L/opt/wine-stable/lib$(M)/wine \
-			-L/opt/wine-staging/lib \
-			-L/opt/wine-staging/lib/wine \
-			-L/opt/wine-staging/lib$(M) \
-			-L/opt/wine-staging/lib$(M)/wine
-wineasio_dll_DLLS     = odbc32 \
-			ole32 \
-			winmm
-wineasio_dll_LIBRARIES = uuid
+ASIO_C_SRCS =   asio.c \
+		main.c \
+		regsvr.c
+ASIO_LDFLAGS =  -shared \
+		-m$(M) \
+		-mnocygwin \
+		wineasio.dll.spec \
+		-L/usr/lib$(M)/wine \
+		-L/usr/lib/wine \
+		-L/usr/lib/$(ARCH)-linux-gnu/wine \
+		-L/usr/lib/$(ARCH)-linux-gnu/wine-development \
+		-L/opt/wine-stable/lib \
+		-L/opt/wine-stable/lib/wine \
+		-L/opt/wine-stable/lib$(M) \
+		-L/opt/wine-stable/lib$(M)/wine \
+		-L/opt/wine-staging/lib \
+		-L/opt/wine-staging/lib/wine \
+		-L/opt/wine-staging/lib$(M) \
+		-L/opt/wine-staging/lib$(M)/wine
+ASIO_DEPS =	-lodbc32 -lole32 -lwinmm -luuid
 
-wineasio_dll_OBJS     = $(wineasio_dll_C_SRCS:%.c=build$(M)/%.c.o) build$(M)/pw_helper.o
-
-### Global source lists
-
-C_SRCS                = $(wineasio_dll_C_SRCS)
+ASIO_OBJS     = $(ASIO_C_SRCS:%.c=build$(M)/%.c.o) build$(M)/pw_helper.o
 
 ### Generic targets
 
@@ -105,12 +97,12 @@ all:
 build: rtaudio/include/asio.h $(DLLS:%=build$(M)/%) libpwasio_gui
 
 install:
-	install build$(M)/$(wineasio_dll_MODULE) $(PREFIX)/lib$(M)/wine/$(ARCH)-windows/
-	install build$(M)/$(wineasio_dll_MODULE).so $(PREFIX)/lib$(M)/wine/$(ARCH)-unix/
+	install build$(M)/$(ASIO_DLL_MODULE) $(PREFIX)/lib$(M)/wine/$(ARCH)-windows/
+	install build$(M)/$(ASIO_DLL_MODULE).so $(PREFIX)/lib$(M)/wine/$(ARCH)-unix/
 	install build$(M)/libpwasio_gui.so $(PREFIX)/lib$(M)/wine/$(ARCH)-unix/
 
 register:
-	$(WINE) regsvr32 $(wineasio_dll_MODULE)
+	$(WINE) regsvr32 $(ASIO_DLL_MODULE)
 
 ### Build rules
 
@@ -124,10 +116,10 @@ build$(M)/%.c.o: %.c
 
 ### Target specific build rules
 
-build$(M)/$(wineasio_dll_MODULE): $(wineasio_dll_OBJS)
+build$(M)/$(ASIO_DLL_MODULE): $(ASIO_OBJS)
 	$(WINEBUILD) -m$(M) --dll --fake-module -E wineasio.dll.spec $^ -o $@
 
-build$(M)/$(wineasio_dll_MODULE).so: $(wineasio_dll_OBJS)
-	$(WINECXX) $^ $(wineasio_dll_LDFLAGS) $(LIBRARIES) \
-		$(wineasio_dll_DLLS:%=-l%) $(wineasio_dll_LIBRARIES:%=-l%) -o $@ \
-		-Wl,-soname,$(wineasio_dll_MODULE).so
+build$(M)/$(ASIO_DLL_MODULE).so: $(ASIO_OBJS)
+	$(WINECXX) $^ $(ASIO_LDFLAGS) \
+		$(LIBRARIES) $(ASIO_DEPS) -o $@ \
+		-Wl,-soname,$(ASIO_DLL_MODULE).so

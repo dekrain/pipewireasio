@@ -38,7 +38,7 @@ typedef struct {
     LONG ref;
 } IClassFactoryImpl;
 
-extern HRESULT WINAPI WineASIOCreateInstance(REFIID riid, LPVOID *ppobj, IUnknown *cls_factory);
+extern HRESULT WINAPI PipeWireASIOCreate(REFIID riid, LPVOID *ppobj, IUnknown *cls_factory);
 
 /*******************************************************************************
  * ClassFactory
@@ -87,7 +87,7 @@ static const IClassFactoryVtbl CF_Vtbl = {
     CF_LockServer
 };
 
-static IClassFactoryImpl WINEASIO_CF = { &CF_Vtbl, 1 };
+static IClassFactoryImpl ASIO_CF = { &CF_Vtbl, 1 };
 
 static HRESULT WINAPI CF_CreateInstance(LPCLASSFACTORY iface, LPUNKNOWN pOuter, REFIID riid, LPVOID *ppobj)
 {
@@ -103,8 +103,7 @@ static HRESULT WINAPI CF_CreateInstance(LPCLASSFACTORY iface, LPUNKNOWN pOuter, 
     }
 
     *ppobj = NULL;
-    /* TRACE("Creating the WineASIO object\n"); */
-    return WineASIOCreateInstance(riid, ppobj, (IUnknown *)&WINEASIO_CF);
+    return PipeWireASIOCreate(riid, ppobj, (IUnknown *)&ASIO_CF);
 }
 
 /*******************************************************************************
@@ -143,8 +142,8 @@ HRESULT WINAPI DllGetClassObject(REFCLSID rclsid, REFIID riid, LPVOID *ppv)
 
     if (IsEqualGUID(rclsid, &CLSID_PipeWireASIO))
     {
-        CF_AddRef((IClassFactory*) &WINEASIO_CF);
-        *ppv = &WINEASIO_CF;
+        CF_AddRef((IClassFactory*) &ASIO_CF);
+        *ppv = &ASIO_CF;
         return S_OK;
     }
 
@@ -163,7 +162,7 @@ HRESULT WINAPI DllGetClassObject(REFCLSID rclsid, REFIID riid, LPVOID *ppv)
  */
 HRESULT WINAPI DllCanUnloadNow(void)
 {
-    return WINEASIO_CF.ref == 1 ? S_OK : S_FALSE;
+    return ASIO_CF.ref == 1 ? S_OK : S_FALSE;
 }
 
 /***********************************************************************

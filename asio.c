@@ -124,13 +124,13 @@ WINE_DEFAULT_DEBUG_CHANNEL(asio);
 #define HIDDEN __attribute__ ((visibility("hidden")))
 
 /*****************************************************************************
- * IWineAsio interface
+ * IASIO interface
  */
 
-#define INTERFACE IWineASIO
-DECLARE_INTERFACE_(IWineASIO,IUnknown)
+#define INTERFACE IASIO
+DECLARE_INTERFACE_(IASIO,IUnknown)
 {
-    STDMETHOD_(HRESULT, QueryInterface)         (THIS_ IID riid, void** ppvObject) PURE;
+    STDMETHOD_(HRESULT, QueryInterface)         (THIS_ REFIID riid, void** ppvObject) PURE;
     STDMETHOD_(ULONG, AddRef)                   (THIS) PURE;
     STDMETHOD_(ULONG, Release)                  (THIS) PURE;
     STDMETHOD_(ASIOBool, Init)                  (THIS_ void *sysRef) PURE;
@@ -157,7 +157,7 @@ DECLARE_INTERFACE_(IWineASIO,IUnknown)
 };
 #undef INTERFACE
 
-typedef struct IWineASIO *LPWINEASIO;
+typedef struct IASIO *LPASIO;
 
 struct io_port {
     bool              active;
@@ -169,10 +169,10 @@ struct io_port {
 
 #define DEVICE_NAME_SIZE 1024
 
-typedef struct IWineASIOImpl
+typedef struct PipeWireASIO
 {
     /* COM stuff */
-    const IWineASIOVtbl        *lpVtbl;
+    const IASIOVtbl            *lpVtbl;
     LONG                        ref;
 
     /* Reference to the DLL class factory (to keep DLL alive while an object is live) */
@@ -195,13 +195,13 @@ typedef struct IWineASIOImpl
     bool                        asio_can_time_code;
     bool                        asio_time_info_mode;
 
-    /* WineASIO configuration options */
-    bool                        wineasio_fixed_buffersize;
-    int                         wineasio_number_inputs;
-    int                         wineasio_number_outputs;
-    LONG                        wineasio_preferred_buffersize;
-    WCHAR                       pwasio_input_device_name[DEVICE_NAME_SIZE];
-    WCHAR                       pwasio_output_device_name[DEVICE_NAME_SIZE];
+    /* Driver configuration options */
+    bool                        conf_fixed_buffersize;
+    int                         conf_number_inputs;
+    int                         conf_number_outputs;
+    LONG                        conf_preferred_buffersize;
+    WCHAR                       input_device_name[DEVICE_NAME_SIZE];
+    WCHAR                       output_device_name[DEVICE_NAME_SIZE];
 
     /* PipeWire stuff */
     struct user_pw_helper      *pw_helper;
@@ -221,13 +221,13 @@ typedef struct IWineASIOImpl
 
     char                        client_name[ASIO_MAX_NAME_LENGTH];
 
-    struct io_port             *input_channel;
-    struct io_port             *output_channel;
+    struct io_port             *input_channels;
+    struct io_port             *output_channels;
 
     uint32_t                    asio_buffers_left_to_init;
     pthread_barrier_t           pw_filter_bound;
     pthread_barrier_t           asio_buffers_filled;
-} IWineASIOImpl;
+} PipeWireASIO;
 
 enum { Loaded, Initialized, Prepared, Running };
 
@@ -239,30 +239,30 @@ enum { Loaded, Initialized, Prepared, Running };
  *  as seen from the WineASIO source
  */
 
-HIDDEN HRESULT   STDMETHODCALLTYPE      QueryInterface(LPWINEASIO iface, REFIID riid, void **ppvObject);
-HIDDEN ULONG     STDMETHODCALLTYPE      AddRef(LPWINEASIO iface);
-HIDDEN ULONG     STDMETHODCALLTYPE      Release(LPWINEASIO iface);
-HIDDEN ASIOBool  STDMETHODCALLTYPE      Init(LPWINEASIO iface, void *sysRef);
-HIDDEN void      STDMETHODCALLTYPE      GetDriverName(LPWINEASIO iface, char *name);
-HIDDEN LONG      STDMETHODCALLTYPE      GetDriverVersion(LPWINEASIO iface);
-HIDDEN void      STDMETHODCALLTYPE      GetErrorMessage(LPWINEASIO iface, char *string);
-HIDDEN ASIOError STDMETHODCALLTYPE      Start(LPWINEASIO iface);
-HIDDEN ASIOError STDMETHODCALLTYPE      Stop(LPWINEASIO iface);
-HIDDEN ASIOError STDMETHODCALLTYPE      GetChannels (LPWINEASIO iface, LONG *numInputChannels, LONG *numOutputChannels);
-HIDDEN ASIOError STDMETHODCALLTYPE      GetLatencies(LPWINEASIO iface, LONG *inputLatency, LONG *outputLatency);
-HIDDEN ASIOError STDMETHODCALLTYPE      GetBufferSize(LPWINEASIO iface, LONG *minSize, LONG *maxSize, LONG *preferredSize, LONG *granularity);
-HIDDEN ASIOError STDMETHODCALLTYPE      CanSampleRate(LPWINEASIO iface, ASIOSampleRate sampleRate);
-HIDDEN ASIOError STDMETHODCALLTYPE      GetSampleRate(LPWINEASIO iface, ASIOSampleRate *sampleRate);
-HIDDEN ASIOError STDMETHODCALLTYPE      SetSampleRate(LPWINEASIO iface, ASIOSampleRate sampleRate);
-HIDDEN ASIOError STDMETHODCALLTYPE      GetClockSources(LPWINEASIO iface, ASIOClockSource *clocks, LONG *numSources);
-HIDDEN ASIOError STDMETHODCALLTYPE      SetClockSource(LPWINEASIO iface, LONG index);
-HIDDEN ASIOError STDMETHODCALLTYPE      GetSamplePosition(LPWINEASIO iface, ASIOSamples *sPos, ASIOTimeStamp *tStamp);
-HIDDEN ASIOError STDMETHODCALLTYPE      GetChannelInfo(LPWINEASIO iface, ASIOChannelInfo *info);
-HIDDEN ASIOError STDMETHODCALLTYPE      CreateBuffers(LPWINEASIO iface, ASIOBufferInfo *bufferInfo, LONG numChannels, LONG bufferSize, ASIOCallbacks *asioCallbacks);
-HIDDEN ASIOError STDMETHODCALLTYPE      DisposeBuffers(LPWINEASIO iface);
-HIDDEN ASIOError STDMETHODCALLTYPE      ControlPanel(LPWINEASIO iface);
-HIDDEN ASIOError STDMETHODCALLTYPE      Future(LPWINEASIO iface, LONG selector, void *opt);
-HIDDEN ASIOError STDMETHODCALLTYPE      OutputReady(LPWINEASIO iface);
+HIDDEN HRESULT   STDMETHODCALLTYPE      QueryInterface(LPASIO pinst, REFIID riid, void **ppvObject);
+HIDDEN ULONG     STDMETHODCALLTYPE      AddRef(LPASIO pinst);
+HIDDEN ULONG     STDMETHODCALLTYPE      Release(LPASIO pinst);
+HIDDEN ASIOBool  STDMETHODCALLTYPE      Init(LPASIO pinst, void *sysRef);
+HIDDEN void      STDMETHODCALLTYPE      GetDriverName(LPASIO pinst, char *name);
+HIDDEN LONG      STDMETHODCALLTYPE      GetDriverVersion(LPASIO pinst);
+HIDDEN void      STDMETHODCALLTYPE      GetErrorMessage(LPASIO pinst, char *string);
+HIDDEN ASIOError STDMETHODCALLTYPE      Start(LPASIO pinst);
+HIDDEN ASIOError STDMETHODCALLTYPE      Stop(LPASIO pinst);
+HIDDEN ASIOError STDMETHODCALLTYPE      GetChannels (LPASIO pinst, LONG *numInputChannels, LONG *numOutputChannels);
+HIDDEN ASIOError STDMETHODCALLTYPE      GetLatencies(LPASIO pinst, LONG *inputLatency, LONG *outputLatency);
+HIDDEN ASIOError STDMETHODCALLTYPE      GetBufferSize(LPASIO pinst, LONG *minSize, LONG *maxSize, LONG *preferredSize, LONG *granularity);
+HIDDEN ASIOError STDMETHODCALLTYPE      CanSampleRate(LPASIO pinst, ASIOSampleRate sampleRate);
+HIDDEN ASIOError STDMETHODCALLTYPE      GetSampleRate(LPASIO pinst, ASIOSampleRate *sampleRate);
+HIDDEN ASIOError STDMETHODCALLTYPE      SetSampleRate(LPASIO pinst, ASIOSampleRate sampleRate);
+HIDDEN ASIOError STDMETHODCALLTYPE      GetClockSources(LPASIO pinst, ASIOClockSource *clocks, LONG *numSources);
+HIDDEN ASIOError STDMETHODCALLTYPE      SetClockSource(LPASIO pinst, LONG index);
+HIDDEN ASIOError STDMETHODCALLTYPE      GetSamplePosition(LPASIO pinst, ASIOSamples *sPos, ASIOTimeStamp *tStamp);
+HIDDEN ASIOError STDMETHODCALLTYPE      GetChannelInfo(LPASIO pinst, ASIOChannelInfo *info);
+HIDDEN ASIOError STDMETHODCALLTYPE      CreateBuffers(LPASIO pinst, ASIOBufferInfo *bufferInfo, LONG numChannels, LONG bufferSize, ASIOCallbacks *asioCallbacks);
+HIDDEN ASIOError STDMETHODCALLTYPE      DisposeBuffers(LPASIO pinst);
+HIDDEN ASIOError STDMETHODCALLTYPE      ControlPanel(LPASIO pinst);
+HIDDEN ASIOError STDMETHODCALLTYPE      Future(LPASIO pinst, LONG selector, void *opt);
+HIDDEN ASIOError STDMETHODCALLTYPE      OutputReady(LPASIO pinst);
 
 /*
  * thiscall wrappers for the vtbl (as seen from app side 32bit)
@@ -294,13 +294,13 @@ HIDDEN void __thiscall_OutputReady(void);
  *  Support functions
  */
 
-HRESULT WINAPI  WineASIOCreateInstance(REFIID riid, LPVOID *ppobj, IUnknown *cls_factory);
-static  void    request_reset(IWineASIOImpl *This);
-static  void    store_config(IWineASIOImpl *This);
-static  VOID    configure_driver(IWineASIOImpl *This);
-static  void    get_nodes_by_name(IWineASIOImpl *This);
-static  void    connect_io_port(IWineASIOImpl *This, struct io_port *port, uint32_t idx, enum spa_direction dir);
-static  void    dispose_io_port(IWineASIOImpl *This, struct io_port *port, enum spa_direction dir);
+HRESULT WINAPI  PipeWireASIOCreate(REFIID riid, LPVOID *ppobj, IUnknown *cls_factory);
+static  void    request_reset(PipeWireASIO *This);
+static  void    store_config(PipeWireASIO *This);
+static  VOID    configure_driver(PipeWireASIO *This);
+static  void    get_nodes_by_name(PipeWireASIO *This);
+static  void    connect_io_port(PipeWireASIO *This, struct io_port *port, uint32_t idx, enum spa_direction dir);
+static  void    dispose_io_port(PipeWireASIO *This, struct io_port *port, enum spa_direction dir);
 
 HIDDEN void GuiClosed(struct pwasio_gui_conf *conf);
 HIDDEN void GuiApplyConfig(struct pwasio_gui_conf *conf);
@@ -309,33 +309,33 @@ HIDDEN void GuiLoadConfig(struct pwasio_gui_conf *conf);
 static DWORD WINAPI wine_thread_runner(LPVOID arg);
 static int          wine_thread_creator(pthread_t* thread_id, const pthread_attr_t* attr, void *(*function)(void*), void* arg);
 
-static const IWineASIOVtbl WineASIO_Vtbl =
+static const IASIOVtbl PipeWireASIO_Vtbl =
 {
-    (void *) QueryInterface,
-    (void *) AddRef,
-    (void *) Release,
+    QueryInterface,
+    AddRef,
+    Release,
 
-    (void *) THISCALL(Init),
-    (void *) THISCALL(GetDriverName),
-    (void *) THISCALL(GetDriverVersion),
-    (void *) THISCALL(GetErrorMessage),
-    (void *) THISCALL(Start),
-    (void *) THISCALL(Stop),
-    (void *) THISCALL(GetChannels),
-    (void *) THISCALL(GetLatencies),
-    (void *) THISCALL(GetBufferSize),
-    (void *) THISCALL(CanSampleRate),
-    (void *) THISCALL(GetSampleRate),
-    (void *) THISCALL(SetSampleRate),
-    (void *) THISCALL(GetClockSources),
-    (void *) THISCALL(SetClockSource),
-    (void *) THISCALL(GetSamplePosition),
-    (void *) THISCALL(GetChannelInfo),
-    (void *) THISCALL(CreateBuffers),
-    (void *) THISCALL(DisposeBuffers),
-    (void *) THISCALL(ControlPanel),
-    (void *) THISCALL(Future),
-    (void *) THISCALL(OutputReady)
+    THISCALL(Init),
+    THISCALL(GetDriverName),
+    THISCALL(GetDriverVersion),
+    THISCALL(GetErrorMessage),
+    THISCALL(Start),
+    THISCALL(Stop),
+    THISCALL(GetChannels),
+    THISCALL(GetLatencies),
+    THISCALL(GetBufferSize),
+    THISCALL(CanSampleRate),
+    THISCALL(GetSampleRate),
+    THISCALL(SetSampleRate),
+    THISCALL(GetClockSources),
+    THISCALL(SetClockSource),
+    THISCALL(GetSamplePosition),
+    THISCALL(GetChannelInfo),
+    THISCALL(CreateBuffers),
+    THISCALL(DisposeBuffers),
+    THISCALL(ControlPanel),
+    THISCALL(Future),
+    THISCALL(OutputReady)
 };
 
 /*
@@ -364,18 +364,18 @@ static struct pw_filter_events const pw_filter_events = {
  */
 
 
-HIDDEN HRESULT STDMETHODCALLTYPE QueryInterface(LPWINEASIO iface, REFIID riid, void **ppvObject)
+HIDDEN HRESULT STDMETHODCALLTYPE QueryInterface(LPASIO pinst, REFIID riid, void **ppvObject)
 {
-    IWineASIOImpl   *This = (IWineASIOImpl *)iface;
+    PipeWireASIO   *This = (PipeWireASIO *)pinst;
 
-    TRACE("iface: %p, riid: %s, ppvObject: %p)\n", iface, debugstr_guid(riid), ppvObject);
+    TRACE("this: %p, riid: %s, ppvObject: %p)\n", This, debugstr_guid(riid), ppvObject);
 
     if (ppvObject == NULL)
         return E_INVALIDARG;
 
     if (IsEqualIID(&CLSID_PipeWireASIO, riid))
     {
-        AddRef(iface);
+        AddRef(pinst);
         *ppvObject = This;
         return S_OK;
     }
@@ -384,47 +384,47 @@ HIDDEN HRESULT STDMETHODCALLTYPE QueryInterface(LPWINEASIO iface, REFIID riid, v
 }
 
 /*
- * ULONG STDMETHODCALLTYPE AddRef(LPWINEASIO iface);
+ * ULONG STDMETHODCALLTYPE AddRef(void);
  * Function: Increment the reference count on the object
  * Returns:  Ref count
  */
 
-HIDDEN ULONG STDMETHODCALLTYPE AddRef(LPWINEASIO iface)
+HIDDEN ULONG STDMETHODCALLTYPE AddRef(LPASIO pinst)
 {
-    IWineASIOImpl   *This = (IWineASIOImpl *)iface;
+    PipeWireASIO   *This = (PipeWireASIO *)pinst;
     ULONG           ref = InterlockedIncrement(&(This->ref));
 
-    TRACE("iface: %p, ref count is %d\n", iface, ref);
+    TRACE("this: %p, ref count is %d\n", This, ref);
     return ref;
 }
 
 /*
- * ULONG Release (LPWINEASIO iface);
+ * ULONG Release (void);
  *  Function:   Destroy the interface
  *  Returns:    Ref count
  *  Implies:    ASIOStop() and ASIODisposeBuffers()
  */
 
-HIDDEN ULONG STDMETHODCALLTYPE Release(LPWINEASIO iface)
+HIDDEN ULONG STDMETHODCALLTYPE Release(LPASIO pinst)
 {
-    IWineASIOImpl   *This = (IWineASIOImpl *)iface;
+    PipeWireASIO   *This = (PipeWireASIO *)pinst;
     ULONG            ref = InterlockedDecrement(&This->ref);
 
-    TRACE("iface: %p, ref count is %d\n", iface, ref);
+    TRACE("this: %p, ref count is %d\n", This, ref);
 
     if (This->asio_driver_state == Running)
-        Stop(iface);
+        Stop(pinst);
     if (This->asio_driver_state == Prepared)
-        DisposeBuffers(iface);
+        DisposeBuffers(pinst);
 
     if (This->asio_driver_state == Initialized)
     {
         This->asio_active_inputs = This->asio_active_outputs = 0;
-        TRACE("%i IOChannel structures released\n", This->wineasio_number_inputs + This->wineasio_number_outputs);
+        TRACE("%i IO ports released\n", This->conf_number_inputs + This->conf_number_outputs);
 
-        if (This->input_channel) {
-            HeapFree(GetProcessHeap(), 0, This->input_channel);
-            This->input_channel = NULL;
+        if (This->input_channels) {
+            HeapFree(GetProcessHeap(), 0, This->input_channels);
+            This->input_channels = NULL;
         }
 
         user_pw_lock_loop(This->pw_helper);
@@ -437,30 +437,30 @@ HIDDEN ULONG STDMETHODCALLTYPE Release(LPWINEASIO iface)
             pwasio_destroy_gui(This->gui);
         if (This->pw_helper)
             user_pw_destroy_helper(This->pw_helper);
-        if (This->input_channel)
-            HeapFree(GetProcessHeap(), 0, This->input_channel);
+        if (This->input_channels)
+            HeapFree(GetProcessHeap(), 0, This->input_channels);
         This->cls_factory->lpVtbl->Release(This->cls_factory);
         HeapFree(GetProcessHeap(), 0, This);
     }
     return ref;
 }
 
-static void Uninit(IWineASIOImpl *This) {
+static void Uninit(PipeWireASIO *This) {
     // TODOOOO
 }
 
-static ASIOError InitPorts(IWineASIOImpl *This) {
+static ASIOError InitPorts(PipeWireASIO *This) {
     int idx;
 
-    /* Allocate IOChannel structures */
-    This->input_channel = HeapAlloc(GetProcessHeap(), 0, (This->wineasio_number_inputs + This->wineasio_number_outputs) * sizeof(struct io_port));
-    if (!This->input_channel)
+    /* Allocate IO port structures */
+    This->input_channels = HeapAlloc(GetProcessHeap(), 0, (This->conf_number_inputs + This->conf_number_outputs) * sizeof(struct io_port));
+    if (!This->input_channels)
     {
-        ERR("Unable to allocate IOChannel structures for %i channels\n", This->wineasio_number_inputs + This->wineasio_number_outputs);
+        ERR("Unable to allocate IO port structures for %i channels\n", This->conf_number_inputs + This->conf_number_outputs);
         return ASE_NoMemory;
     }
-    This->output_channel = This->input_channel + This->wineasio_number_inputs;
-    TRACE("%i IOChannel structures allocated\n", This->wineasio_number_inputs + This->wineasio_number_outputs);
+    This->output_channels = This->input_channels + This->conf_number_inputs;
+    TRACE("%i IO port structures allocated\n", This->conf_number_inputs + This->conf_number_outputs);
 
     /* Set up ports */
 
@@ -476,7 +476,7 @@ static ASIOError InitPorts(IWineASIOImpl *This) {
             SPA_PARAM_BUFFERS_dataType, SPA_POD_Int(SPA_DATA_MemPtr),
             //SPA_PARAM_BUFFERS_dataType, SPA_POD_CHOICE_FLAGS_Int(1 << SPA_DATA_MemPtr),
             SPA_PARAM_BUFFERS_size, SPA_POD_CHOICE_STEP_Int(
-                This->wineasio_preferred_buffersize,
+                This->conf_preferred_buffersize,
                 sizeof(float),
                 INT_MAX,
                 sizeof(float)
@@ -493,35 +493,35 @@ static ASIOError InitPorts(IWineASIOImpl *This) {
     //char port_name[32];
     #define INPUT_PORT_PREFIX "input_"
     //memcpy(port_name, INPUT_PORT_PREFIX, sizeof(INPUT_PORT_PREFIX));
-    for (idx = 0; idx < This->wineasio_number_inputs; ++idx) {
+    for (idx = 0; idx < This->conf_number_inputs; ++idx) {
         //snprintf(port_name + sizeof(INPUT_PORT_PREFIX), sizeof(port_name) - sizeof(INPUT_PORT_PREFIX), "%d", idx);
-        snprintf(This->input_channel[idx].port_name, ASIO_MAX_NAME_LENGTH, INPUT_PORT_PREFIX "%d", idx);
-        This->input_channel[idx].port = pw_filter_add_port(This->pw_filter,
+        snprintf(This->input_channels[idx].port_name, ASIO_MAX_NAME_LENGTH, INPUT_PORT_PREFIX "%d", idx);
+        This->input_channels[idx].port = pw_filter_add_port(This->pw_filter,
             PW_DIRECTION_INPUT,
             PW_FILTER_PORT_FLAG_MAP_BUFFERS,
             0,
             pw_properties_new(
-                PW_KEY_PORT_NAME, This->input_channel[idx].port_name,
+                PW_KEY_PORT_NAME, This->input_channels[idx].port_name,
                 PW_KEY_FORMAT_DSP, AUDIO_TYPE_DSP,
                 NULL),
             port_params, ARRAYSIZE(port_params));
     }
     #define OUTPUT_PORT_PREFIX "output_"
     //memcpy(port_name, OUTPUT_PORT_PREFIX, sizeof(OUTPUT_PORT_PREFIX));
-    for (idx = 0; idx < This->wineasio_number_outputs; ++idx) {
+    for (idx = 0; idx < This->conf_number_outputs; ++idx) {
         //snprintf(port_name + sizeof(OUTPUT_PORT_PREFIX), sizeof(port_name) - sizeof(OUTPUT_PORT_PREFIX), "%d", idx);
-        snprintf(This->output_channel[idx].port_name, ASIO_MAX_NAME_LENGTH, OUTPUT_PORT_PREFIX "%d", idx);
-        This->output_channel[idx].port = pw_filter_add_port(This->pw_filter,
+        snprintf(This->output_channels[idx].port_name, ASIO_MAX_NAME_LENGTH, OUTPUT_PORT_PREFIX "%d", idx);
+        This->output_channels[idx].port = pw_filter_add_port(This->pw_filter,
             PW_DIRECTION_OUTPUT,
             PW_FILTER_PORT_FLAG_MAP_BUFFERS,
             0,
             pw_properties_new(
-                PW_KEY_PORT_NAME, This->output_channel[idx].port_name,
+                PW_KEY_PORT_NAME, This->output_channels[idx].port_name,
                 PW_KEY_FORMAT_DSP, AUDIO_TYPE_DSP,
                 NULL),
             port_params, ARRAYSIZE(port_params));
     }
-    TRACE("%i IOChannel structures initialized\n", This->wineasio_number_inputs + This->wineasio_number_outputs);
+    TRACE("%i IO ports initialized\n", This->conf_number_inputs + This->conf_number_outputs);
 
     return ASE_OK;
 }
@@ -535,9 +535,9 @@ static ASIOError InitPorts(IWineASIOImpl *This) {
  */
 
 DEFINE_THISCALL_WRAPPER(Init,8)
-HIDDEN ASIOBool STDMETHODCALLTYPE Init(LPWINEASIO iface, void *sysRef)
+HIDDEN ASIOBool STDMETHODCALLTYPE Init(LPASIO pinst, void *sysRef)
 {
-    IWineASIOImpl   *This = (IWineASIOImpl *)iface;
+    PipeWireASIO   *This = (PipeWireASIO *)pinst;
 
     struct pw_helper_init_args init_args = {
         .app_name = This->client_name,
@@ -562,7 +562,7 @@ HIDDEN ASIOBool STDMETHODCALLTYPE Init(LPWINEASIO iface, void *sysRef)
     This->gui_conf.apply_config = GuiApplyConfig;
     This->gui_conf.load_config = GuiLoadConfig;
     This->gui_conf.pw_helper = This->pw_helper;
-    This->gui_conf.cf_buffer_size = This->wineasio_preferred_buffersize;
+    This->gui_conf.cf_buffer_size = This->conf_preferred_buffersize;
     This->gui_conf.cf_io_type = PWASIO_IO_SIMPLE;
     This->gui_conf.cf_io_config.simple.input = PWASIO_NODE_DEFAULT;
     This->gui_conf.cf_io_config.simple.output = PWASIO_NODE_DEFAULT;
@@ -610,9 +610,9 @@ HIDDEN ASIOBool STDMETHODCALLTYPE Init(LPWINEASIO iface, void *sysRef)
  */
 
 DEFINE_THISCALL_WRAPPER(GetDriverName,8)
-HIDDEN void STDMETHODCALLTYPE GetDriverName(LPWINEASIO iface, char *name)
+HIDDEN void STDMETHODCALLTYPE GetDriverName(LPASIO pinst, char *name)
 {
-    TRACE("iface: %p, name: %p\n", iface, name);
+    TRACE("this: %p, name: %p\n", pinst, name);
     strcpy(name, "PipeWireASIO");
     return;
 }
@@ -623,11 +623,11 @@ HIDDEN void STDMETHODCALLTYPE GetDriverName(LPWINEASIO iface, char *name)
  */
 
 DEFINE_THISCALL_WRAPPER(GetDriverVersion,4)
-HIDDEN LONG STDMETHODCALLTYPE GetDriverVersion(LPWINEASIO iface)
+HIDDEN LONG STDMETHODCALLTYPE GetDriverVersion(LPASIO pinst)
 {
-    IWineASIOImpl   *This = (IWineASIOImpl*)iface;
+    PipeWireASIO   *This = (PipeWireASIO*)pinst;
 
-    TRACE("iface: %p\n", iface);
+    TRACE("this: %p\n", This);
     return This->asio_version;
 }
 
@@ -637,9 +637,9 @@ HIDDEN LONG STDMETHODCALLTYPE GetDriverVersion(LPWINEASIO iface)
  */
 
 DEFINE_THISCALL_WRAPPER(GetErrorMessage,8)
-HIDDEN void STDMETHODCALLTYPE GetErrorMessage(LPWINEASIO iface, char *string)
+HIDDEN void STDMETHODCALLTYPE GetErrorMessage(LPASIO pinst, char *string)
 {
-    TRACE("iface: %p, string: %p)\n", iface, string);
+    TRACE("this: %p, string: %p)\n", pinst, string);
     strcpy(string, "PipeWireASIO does not return error messages\n");
     return;
 }
@@ -652,11 +652,11 @@ HIDDEN void STDMETHODCALLTYPE GetErrorMessage(LPWINEASIO iface, char *string)
  */
 
 DEFINE_THISCALL_WRAPPER(Start,4)
-HIDDEN ASIOError STDMETHODCALLTYPE Start(LPWINEASIO iface)
+HIDDEN ASIOError STDMETHODCALLTYPE Start(LPASIO pinst)
 {
-    IWineASIOImpl   *This = (IWineASIOImpl*)iface;
+    PipeWireASIO   *This = (PipeWireASIO*)pinst;
 
-    TRACE("iface: %p\n", iface);
+    TRACE("this: %p\n", This);
 
     if (This->asio_driver_state != Prepared)
         return ASE_NotPresent;
@@ -707,11 +707,11 @@ HIDDEN ASIOError STDMETHODCALLTYPE Start(LPWINEASIO iface)
  */
 
 DEFINE_THISCALL_WRAPPER(Stop,4)
-HIDDEN ASIOError STDMETHODCALLTYPE Stop(LPWINEASIO iface)
+HIDDEN ASIOError STDMETHODCALLTYPE Stop(LPASIO pinst)
 {
-    IWineASIOImpl   *This = (IWineASIOImpl*)iface;
+    PipeWireASIO   *This = (PipeWireASIO*)pinst;
 
-    TRACE("iface: %p\n", iface);
+    TRACE("this: %p\n", This);
 
     if (This->asio_driver_state != Running)
         return ASE_NotPresent;
@@ -733,16 +733,16 @@ HIDDEN ASIOError STDMETHODCALLTYPE Stop(LPWINEASIO iface)
  */
 
 DEFINE_THISCALL_WRAPPER(GetChannels,12)
-HIDDEN ASIOError STDMETHODCALLTYPE GetChannels (LPWINEASIO iface, LONG *numInputChannels, LONG *numOutputChannels)
+HIDDEN ASIOError STDMETHODCALLTYPE GetChannels (LPASIO pinst, LONG *numInputChannels, LONG *numOutputChannels)
 {
-    IWineASIOImpl   *This = (IWineASIOImpl*)iface;
+    PipeWireASIO   *This = (PipeWireASIO*)pinst;
 
     if (!numInputChannels || !numOutputChannels)
         return ASE_InvalidParameter;
 
-    *numInputChannels = This->wineasio_number_inputs;
-    *numOutputChannels = This->wineasio_number_outputs;
-    TRACE("iface: %p, inputs: %i, outputs: %i\n", iface, This->wineasio_number_inputs, This->wineasio_number_outputs);
+    *numInputChannels = This->conf_number_inputs;
+    *numOutputChannels = This->conf_number_outputs;
+    TRACE("this: %p, inputs: %i, outputs: %i\n", This, This->conf_number_inputs, This->conf_number_outputs);
     return ASE_OK;
 }
 
@@ -753,9 +753,9 @@ HIDDEN ASIOError STDMETHODCALLTYPE GetChannels (LPWINEASIO iface, LONG *numInput
  */
 
 DEFINE_THISCALL_WRAPPER(GetLatencies,12)
-HIDDEN ASIOError STDMETHODCALLTYPE GetLatencies(LPWINEASIO iface, LONG *inputLatency, LONG *outputLatency)
+HIDDEN ASIOError STDMETHODCALLTYPE GetLatencies(LPASIO pinst, LONG *inputLatency, LONG *outputLatency)
 {
-    IWineASIOImpl           *This = (IWineASIOImpl*)iface;
+    PipeWireASIO           *This = (PipeWireASIO*)pinst;
 
     if (!inputLatency || !outputLatency)
         return ASE_InvalidParameter;
@@ -766,29 +766,28 @@ HIDDEN ASIOError STDMETHODCALLTYPE GetLatencies(LPWINEASIO iface, LONG *inputLat
     // TODO: Get PipeWire IO latency
     *inputLatency = This->asio_current_buffersize;
     *outputLatency = This->asio_current_buffersize;
-    TRACE("iface: %p, input latency: %d, output latency: %d\n", iface, *inputLatency, *outputLatency);
+    TRACE("this: %p, input latency: %d, output latency: %d\n", This, *inputLatency, *outputLatency);
 
     return ASE_OK;
 }
 
 /*
  * ASIOError GetBufferSize(LONG *minSize, LONG *maxSize, LONG *preferredSize, LONG *granularity);
- *  Function:    Return minimum, maximum, preferred buffer sizes, and granularity
- *               At the moment return all the same, and granularity 0
+ *  Function:   Return minimum, maximum, preferred buffer sizes, and granularity
  *  Returns:    ASE_NotPresent on missing IO
  */
 
 DEFINE_THISCALL_WRAPPER(GetBufferSize,20)
-HIDDEN ASIOError STDMETHODCALLTYPE GetBufferSize(LPWINEASIO iface, LONG *minSize, LONG *maxSize, LONG *preferredSize, LONG *granularity)
+HIDDEN ASIOError STDMETHODCALLTYPE GetBufferSize(LPASIO pinst, LONG *minSize, LONG *maxSize, LONG *preferredSize, LONG *granularity)
 {
-    IWineASIOImpl   *This = (IWineASIOImpl*)iface;
+    PipeWireASIO   *This = (PipeWireASIO*)pinst;
 
-    TRACE("iface: %p, minSize: %p, maxSize: %p, preferredSize: %p, granularity: %p\n", iface, minSize, maxSize, preferredSize, granularity);
+    TRACE("this: %p, minSize: %p, maxSize: %p, preferredSize: %p, granularity: %p\n", This, minSize, maxSize, preferredSize, granularity);
 
     if (!minSize || !maxSize || !preferredSize || !granularity)
         return ASE_InvalidParameter;
 
-    if (This->wineasio_fixed_buffersize)
+    if (This->conf_fixed_buffersize)
     {
         *minSize = *maxSize = *preferredSize = This->asio_current_buffersize;
         *granularity = 0;
@@ -798,7 +797,7 @@ HIDDEN ASIOError STDMETHODCALLTYPE GetBufferSize(LPWINEASIO iface, LONG *minSize
 
     *minSize = ASIO_MINIMUM_BUFFERSIZE;
     *maxSize = ASIO_MAXIMUM_BUFFERSIZE;
-    *preferredSize = This->wineasio_preferred_buffersize;
+    *preferredSize = This->conf_preferred_buffersize;
     *granularity = 1;
     TRACE("The ASIO host can control buffersize\nMinimum: %i, maximum: %i, preferred: %i, granularity: %i, current: %i\n",
           *minSize, *maxSize, *preferredSize, *granularity, This->asio_current_buffersize);
@@ -812,11 +811,11 @@ HIDDEN ASIOError STDMETHODCALLTYPE GetBufferSize(LPWINEASIO iface, LONG *minSize
  */
 
 DEFINE_THISCALL_WRAPPER(CanSampleRate,12)
-HIDDEN ASIOError STDMETHODCALLTYPE CanSampleRate(LPWINEASIO iface, ASIOSampleRate sampleRate)
+HIDDEN ASIOError STDMETHODCALLTYPE CanSampleRate(LPASIO pinst, ASIOSampleRate sampleRate)
 {
-    IWineASIOImpl   *This = (IWineASIOImpl*)iface;
+    PipeWireASIO   *This = (PipeWireASIO*)pinst;
 
-    TRACE("iface: %p, Samplerate = %li, requested samplerate = %li\n", iface, (long) This->asio_sample_rate, (long) sampleRate);
+    TRACE("this: %p, Samplerate = %li, requested samplerate = %li\n", This, (long) This->asio_sample_rate, (long) sampleRate);
 
     //if (sampleRate != This->asio_sample_rate)
     //    return ASE_NoClock;
@@ -831,11 +830,11 @@ HIDDEN ASIOError STDMETHODCALLTYPE CanSampleRate(LPWINEASIO iface, ASIOSampleRat
  */
 
 DEFINE_THISCALL_WRAPPER(GetSampleRate,8)
-HIDDEN ASIOError STDMETHODCALLTYPE GetSampleRate(LPWINEASIO iface, ASIOSampleRate *sampleRate)
+HIDDEN ASIOError STDMETHODCALLTYPE GetSampleRate(LPASIO pinst, ASIOSampleRate *sampleRate)
 {
-    IWineASIOImpl   *This = (IWineASIOImpl*)iface;
+    PipeWireASIO   *This = (PipeWireASIO*)pinst;
 
-    TRACE("iface: %p, Sample rate is %i\n", iface, (int) This->asio_sample_rate);
+    TRACE("this: %p, Sample rate is %i\n", This, (int) This->asio_sample_rate);
 
     if (!sampleRate)
         return ASE_InvalidParameter;
@@ -853,11 +852,11 @@ HIDDEN ASIOError STDMETHODCALLTYPE GetSampleRate(LPWINEASIO iface, ASIOSampleRat
  */
 
 DEFINE_THISCALL_WRAPPER(SetSampleRate,12)
-HIDDEN ASIOError STDMETHODCALLTYPE SetSampleRate(LPWINEASIO iface, ASIOSampleRate sampleRate)
+HIDDEN ASIOError STDMETHODCALLTYPE SetSampleRate(LPASIO pinst, ASIOSampleRate sampleRate)
 {
-    IWineASIOImpl   *This = (IWineASIOImpl*)iface;
+    PipeWireASIO   *This = (PipeWireASIO*)pinst;
 
-    TRACE("iface: %p, Sample rate %f requested\n", iface, sampleRate);
+    TRACE("this: %p, Sample rate %f requested\n", This, sampleRate);
 
     This->asio_sample_rate = sampleRate;
     return ASE_OK;
@@ -873,9 +872,9 @@ HIDDEN ASIOError STDMETHODCALLTYPE SetSampleRate(LPWINEASIO iface, ASIOSampleRat
  */
 
 DEFINE_THISCALL_WRAPPER(GetClockSources,12)
-HIDDEN ASIOError STDMETHODCALLTYPE GetClockSources(LPWINEASIO iface, ASIOClockSource *clocks, LONG *numSources)
+HIDDEN ASIOError STDMETHODCALLTYPE GetClockSources(LPASIO pinst, ASIOClockSource *clocks, LONG *numSources)
 {
-    TRACE("iface: %p, clocks: %p, numSources: %p\n", iface, clocks, numSources);
+    TRACE("this: %p, clocks: %p, numSources: %p\n", pinst, clocks, numSources);
 
     if (!clocks || !numSources)
         return ASE_InvalidParameter;
@@ -899,9 +898,9 @@ HIDDEN ASIOError STDMETHODCALLTYPE GetClockSources(LPWINEASIO iface, ASIOClockSo
  */
 
 DEFINE_THISCALL_WRAPPER(SetClockSource,8)
-HIDDEN ASIOError STDMETHODCALLTYPE SetClockSource(LPWINEASIO iface, LONG index)
+HIDDEN ASIOError STDMETHODCALLTYPE SetClockSource(LPASIO pinst, LONG index)
 {
-    TRACE("iface: %p, index: %i\n", iface, index);
+    TRACE("this: %p, index: %i\n", pinst, index);
 
     if (index != 0)
         return ASE_NotPresent;
@@ -918,11 +917,11 @@ HIDDEN ASIOError STDMETHODCALLTYPE SetClockSource(LPWINEASIO iface, LONG index)
  */
 
 DEFINE_THISCALL_WRAPPER(GetSamplePosition,12)
-HIDDEN ASIOError STDMETHODCALLTYPE GetSamplePosition(LPWINEASIO iface, ASIOSamples *sPos, ASIOTimeStamp *tStamp)
+HIDDEN ASIOError STDMETHODCALLTYPE GetSamplePosition(LPASIO pinst, ASIOSamples *sPos, ASIOTimeStamp *tStamp)
 {
-    IWineASIOImpl   *This = (IWineASIOImpl*)iface;
+    PipeWireASIO   *This = (PipeWireASIO*)pinst;
 
-    TRACE("iface: %p, sPos: %p, tStamp: %p\n", iface, sPos, tStamp);
+    TRACE("this: %p, sPos: %p, tStamp: %p\n", This, sPos, tStamp);
 
     if (!sPos || !tStamp)
         return ASE_InvalidParameter;
@@ -940,13 +939,13 @@ HIDDEN ASIOError STDMETHODCALLTYPE GetSamplePosition(LPWINEASIO iface, ASIOSampl
  */
 
 DEFINE_THISCALL_WRAPPER(GetChannelInfo,8)
-HIDDEN ASIOError STDMETHODCALLTYPE GetChannelInfo(LPWINEASIO iface, ASIOChannelInfo *info)
+HIDDEN ASIOError STDMETHODCALLTYPE GetChannelInfo(LPASIO pinst, ASIOChannelInfo *info)
 {
-    IWineASIOImpl   *This = (IWineASIOImpl*)iface;
+    PipeWireASIO   *This = (PipeWireASIO*)pinst;
 
-    TRACE("(iface: %p, info: %p\n", iface, info);
+    TRACE("this: %p, info: %p\n", This, info);
 
-    if (info->channel < 0 || (info->isInput ? info->channel >= This->wineasio_number_inputs : info->channel >= This->wineasio_number_outputs))
+    if (info->channel < 0 || (info->isInput ? info->channel >= This->conf_number_inputs : info->channel >= This->conf_number_outputs))
         return ASE_InvalidParameter;
 
     info->channelGroup = 0;
@@ -954,13 +953,13 @@ HIDDEN ASIOError STDMETHODCALLTYPE GetChannelInfo(LPWINEASIO iface, ASIOChannelI
 
     if (info->isInput)
     {
-        info->isActive = This->input_channel[info->channel].active;
-        memcpy(info->name, This->input_channel[info->channel].port_name, ASIO_MAX_NAME_LENGTH);
+        info->isActive = This->input_channels[info->channel].active;
+        memcpy(info->name, This->input_channels[info->channel].port_name, ASIO_MAX_NAME_LENGTH);
     }
     else
     {
-        info->isActive = This->output_channel[info->channel].active;
-        memcpy(info->name, This->output_channel[info->channel].port_name, ASIO_MAX_NAME_LENGTH);
+        info->isActive = This->output_channels[info->channel].active;
+        memcpy(info->name, This->output_channels[info->channel].port_name, ASIO_MAX_NAME_LENGTH);
     }
     return ASE_OK;
 }
@@ -979,23 +978,23 @@ HIDDEN ASIOError STDMETHODCALLTYPE GetChannelInfo(LPWINEASIO iface, ASIOChannelI
  */
 
 DEFINE_THISCALL_WRAPPER(CreateBuffers,20)
-HIDDEN ASIOError STDMETHODCALLTYPE CreateBuffers(LPWINEASIO iface, ASIOBufferInfo *bufferInfo, LONG numChannels, LONG bufferSize, ASIOCallbacks *asioCallbacks)
+HIDDEN ASIOError STDMETHODCALLTYPE CreateBuffers(LPASIO pinst, ASIOBufferInfo *bufferInfos, LONG numChannels, LONG bufferSize, ASIOCallbacks *asioCallbacks)
 {
-    IWineASIOImpl   *This = (IWineASIOImpl*)iface;
-    ASIOBufferInfo  *buffer_info = bufferInfo;
-    ASIOError        status;
-    int             i, j, k;
+    PipeWireASIO   *This = (PipeWireASIO*)pinst;
+    ASIOBufferInfo *cur_buffer;
+    ASIOError       status;
+    int             idx;
 
-    TRACE("iface: %p, driver state: %d, bufferInfo: %p, numChannels: %i, bufferSize: %i, asioCallbacks: %p\n", iface, This->asio_driver_state, bufferInfo, (int)numChannels, (int)bufferSize, asioCallbacks);
+    TRACE("this: %p, driver state: %d, bufferInfo: %p, numChannels: %i, bufferSize: %i, asioCallbacks: %p\n", This, This->asio_driver_state, bufferInfos, (int)numChannels, (int)bufferSize, asioCallbacks);
 
     if (This->asio_driver_state != Initialized)
         return ASE_NotPresent;
 
-    if (!bufferInfo || !asioCallbacks)
+    if (!bufferInfos || !asioCallbacks)
         return ASE_InvalidMode;
 
     /* set buf_size */
-    if (This->wineasio_fixed_buffersize)
+    if (This->conf_fixed_buffersize)
     {
         if (This->asio_current_buffersize != bufferSize)
             return ASE_InvalidMode;
@@ -1050,36 +1049,36 @@ HIDDEN ASIOError STDMETHODCALLTYPE CreateBuffers(LPWINEASIO iface, ASIOBufferInf
     TRACE("\n");
 
     /* initialize ASIOBufferInfo structures */
-    buffer_info = bufferInfo;
+    cur_buffer = bufferInfos;
     This->asio_active_inputs = This->asio_active_outputs = 0;
 
-    for (i = 0; i < This->wineasio_number_inputs; i++) {
-        This->input_channel[i].active = false;
+    for (idx = 0; idx < This->conf_number_inputs; idx++) {
+        This->input_channels[idx].active = false;
     }
-    for (i = 0; i < This->wineasio_number_outputs; i++) {
-        This->output_channel[i].active = false;
+    for (idx = 0; idx < This->conf_number_outputs; idx++) {
+        This->output_channels[idx].active = false;
     }
 
-    for (i = 0; i < numChannels; i++, buffer_info++)
+    for (idx = 0; idx < numChannels; idx++, cur_buffer++)
     {
         struct io_port *chan;
-        if (buffer_info->isInput)
+        if (cur_buffer->isInput)
         {
-            if (buffer_info->channelNum >= This->wineasio_number_inputs) {
-                WARN("Non-existant input channel requested: %u/%u\n", buffer_info->channelNum, This->wineasio_number_inputs);
+            if (cur_buffer->channelNum >= This->conf_number_inputs) {
+                WARN("Non-existant input channel requested: %u/%u\n", cur_buffer->channelNum, This->conf_number_inputs);
                 return ASE_InvalidMode;
             }
             This->asio_active_inputs++;
-            chan = &This->input_channel[buffer_info->channelNum];
+            chan = &This->input_channels[cur_buffer->channelNum];
         }
         else
         {
-            if (buffer_info->channelNum >= This->wineasio_number_outputs) {
-                WARN("Non-existant output channel requested: %u/%u\n", buffer_info->channelNum, This->wineasio_number_outputs);
+            if (cur_buffer->channelNum >= This->conf_number_outputs) {
+                WARN("Non-existant output channel requested: %u/%u\n", cur_buffer->channelNum, This->conf_number_outputs);
                 return ASE_InvalidMode;
             }
             This->asio_active_outputs++;
-            chan = &This->output_channel[buffer_info->channelNum];
+            chan = &This->output_channels[cur_buffer->channelNum];
         }
 
         chan->active = true;
@@ -1144,14 +1143,14 @@ HIDDEN ASIOError STDMETHODCALLTYPE CreateBuffers(LPWINEASIO iface, ASIOBufferInf
     struct spa_dict prop_dict = SPA_DICT_INIT_ARRAY(props);
     pw_filter_update_properties(This->pw_filter, NULL, &prop_dict);
 
-    for (i = 0; i < This->wineasio_number_inputs; ++i) {
-        if (pw_filter_update_params(This->pw_filter, This->input_channel[i].port, port_params_in, ARRAYSIZE(port_params_in)) < 0) {
+    for (idx = 0; idx < This->conf_number_inputs; ++idx) {
+        if (pw_filter_update_params(This->pw_filter, This->input_channels[idx].port, port_params_in, ARRAYSIZE(port_params_in)) < 0) {
             ERR("Failed to setup input port params\n");
             return ASE_HWMalfunction;
         }
     }
-    for (i = 0; i < This->wineasio_number_outputs; ++i) {
-        if (pw_filter_update_params(This->pw_filter, This->output_channel[i].port, port_params_out, ARRAYSIZE(port_params_out)) < 0) {
+    for (idx = 0; idx < This->conf_number_outputs; ++idx) {
+        if (pw_filter_update_params(This->pw_filter, This->output_channels[idx].port, port_params_out, ARRAYSIZE(port_params_out)) < 0) {
             ERR("Failed to setup output port params\n");
             return ASE_HWMalfunction;
         }
@@ -1167,18 +1166,18 @@ HIDDEN ASIOError STDMETHODCALLTYPE CreateBuffers(LPWINEASIO iface, ASIOBufferInf
     //user_pw_lock_loop(This->pw_helper); // locking here interferes with default_node calls
 
     /* Connect all ports */
-    for (i = 0; i < This->wineasio_number_inputs; ++i) {
-        if (!This->input_channel[i].active)
+    for (idx = 0; idx < This->conf_number_inputs; ++idx) {
+        if (!This->input_channels[idx].active)
             continue;
 
-        connect_io_port(This, &This->input_channel[i], i, SPA_DIRECTION_INPUT);
+        connect_io_port(This, &This->input_channels[idx], idx, SPA_DIRECTION_INPUT);
     }
 
-    for (i = 0; i < This->wineasio_number_outputs; ++i) {
-        if (!This->output_channel[i].active)
+    for (idx = 0; idx < This->conf_number_outputs; ++idx) {
+        if (!This->output_channels[idx].active)
             continue;
 
-        connect_io_port(This, &This->output_channel[i], i, SPA_DIRECTION_OUTPUT);
+        connect_io_port(This, &This->output_channels[idx], idx, SPA_DIRECTION_OUTPUT);
     }
 
     /* Allocate audio buffers */
@@ -1212,24 +1211,22 @@ HIDDEN ASIOError STDMETHODCALLTYPE CreateBuffers(LPWINEASIO iface, ASIOBufferInf
 
     pthread_barrier_wait(&This->asio_buffers_filled);
 
-    buffer_info = bufferInfo;
-    for (i = 0; i < numChannels; i++, buffer_info++)
+    cur_buffer = bufferInfos;
+    for (idx = 0; idx < numChannels; idx++, cur_buffer++)
     {
         struct io_port *chan;
-        if (buffer_info->isInput)
+        if (cur_buffer->isInput)
         {
-            chan = &This->input_channel[buffer_info->channelNum];
-            /* TRACE("ASIO audio buffer for channel %i as input %li created\n", i, This->asio_active_inputs); */
+            chan = &This->input_channels[cur_buffer->channelNum];
         }
         else
         {
-            chan = &This->output_channel[buffer_info->channelNum];
-            /* TRACE("ASIO audio buffer for channel %i as output %li created\n", i, This->asio_active_outputs); */
+            chan = &This->output_channels[cur_buffer->channelNum];
         }
 
-        TRACE("Channel idx %d: buffer 0: %p, buffer 1: %p\n", i, chan->buffers[0], chan->buffers[1]);
-        buffer_info->buffers[0] = chan->buffers[0]->buffer->datas->data;
-        buffer_info->buffers[1] = chan->buffers[1]->buffer->datas->data;
+        TRACE("Channel idx %d: buffer 0: %p, buffer 1: %p\n", idx, chan->buffers[0], chan->buffers[1]);
+        cur_buffer->buffers[0] = chan->buffers[0]->buffer->datas->data;
+        cur_buffer->buffers[1] = chan->buffers[1]->buffer->datas->data;
     }
     TRACE("%i audio channels initialized\n", This->asio_active_inputs + This->asio_active_outputs);
 
@@ -1247,28 +1244,28 @@ HIDDEN ASIOError STDMETHODCALLTYPE CreateBuffers(LPWINEASIO iface, ASIOBufferInf
  */
 
 DEFINE_THISCALL_WRAPPER(DisposeBuffers,4)
-HIDDEN ASIOError STDMETHODCALLTYPE DisposeBuffers(LPWINEASIO iface)
+HIDDEN ASIOError STDMETHODCALLTYPE DisposeBuffers(LPASIO pinst)
 {
-    IWineASIOImpl   *This = (IWineASIOImpl*)iface;
+    PipeWireASIO   *This = (PipeWireASIO*)pinst;
     int             i;
 
-    TRACE("iface: %p\n", iface);
+    TRACE("this: %p\n", This);
 
     if (This->asio_driver_state == Running)
-        Stop (iface);
+        Stop(pinst);
     if (This->asio_driver_state != Prepared)
         return ASE_NotPresent;
 
     This->asio_callbacks = NULL;
 
     user_pw_lock_loop(This->pw_helper);
-    for (i = 0; i < This->wineasio_number_inputs; i++)
+    for (i = 0; i < This->conf_number_inputs; i++)
     {
-        dispose_io_port(This, &This->input_channel[i], SPA_DIRECTION_INPUT);
+        dispose_io_port(This, &This->input_channels[i], SPA_DIRECTION_INPUT);
     }
-    for (i = 0; i < This->wineasio_number_outputs; i++)
+    for (i = 0; i < This->conf_number_outputs; i++)
     {
-        dispose_io_port(This, &This->output_channel[i], SPA_DIRECTION_OUTPUT);
+        dispose_io_port(This, &This->output_channels[i], SPA_DIRECTION_OUTPUT);
     }
     This->asio_active_inputs = This->asio_active_outputs = 0;
     pw_filter_disconnect(This->pw_filter);
@@ -1286,10 +1283,10 @@ HIDDEN ASIOError STDMETHODCALLTYPE DisposeBuffers(LPWINEASIO iface)
  */
 
 DEFINE_THISCALL_WRAPPER(ControlPanel,4)
-HIDDEN ASIOError STDMETHODCALLTYPE ControlPanel(LPWINEASIO iface)
+HIDDEN ASIOError STDMETHODCALLTYPE ControlPanel(LPASIO pinst)
 {
-    IWineASIOImpl   *This = (IWineASIOImpl *)iface;
-    puts("OPENING CONTROL PANEL!!!");
+    PipeWireASIO   *This = (PipeWireASIO *)pinst;
+    TRACE("Opening control panel. this: %p\n", This);
 
     if (This->gui == NULL) {
         This->gui = pwasio_init_gui(&This->gui_conf);
@@ -1301,7 +1298,7 @@ HIDDEN ASIOError STDMETHODCALLTYPE ControlPanel(LPWINEASIO iface)
 
 HIDDEN int GuiClosedLate(struct spa_loop *loop, bool async, uint32_t seq, void const *data, size_t size, void *user)
 {
-    IWineASIOImpl   *This = (IWineASIOImpl *)user;
+    PipeWireASIO   *This = (PipeWireASIO *)user;
     pwasio_destroy_gui(This->gui);
     This->gui = NULL;
     return 0;
@@ -1309,22 +1306,22 @@ HIDDEN int GuiClosedLate(struct spa_loop *loop, bool async, uint32_t seq, void c
 
 HIDDEN void GuiClosed(struct pwasio_gui_conf *conf)
 {
-    IWineASIOImpl   *This = (IWineASIOImpl *)conf->user;
+    PipeWireASIO   *This = (PipeWireASIO *)conf->user;
     pw_loop_invoke(This->pw_loop, GuiClosedLate, 0, NULL, 0, false, This);
 }
 
 HIDDEN void GuiApplyConfig(struct pwasio_gui_conf *conf)
 {
-    IWineASIOImpl   *This = (IWineASIOImpl *)conf->user;
-    This->wineasio_preferred_buffersize = conf->cf_buffer_size;
+    PipeWireASIO   *This = (PipeWireASIO *)conf->user;
+    This->conf_preferred_buffersize = conf->cf_buffer_size;
     This->gui_reset_req = true;
     // Reminder: DO NOT PUT WINDOWS CALLS IN AN UNMANAGED THREAD!! (i.e. the settings GUI thread)
 }
 
 HIDDEN void GuiLoadConfig(struct pwasio_gui_conf *conf)
 {
-    IWineASIOImpl   *This = (IWineASIOImpl *)conf->user;
-    conf->cf_buffer_size = This->wineasio_preferred_buffersize;
+    PipeWireASIO   *This = (PipeWireASIO *)conf->user;
+    conf->cf_buffer_size = This->conf_preferred_buffersize;
 }
 
 /*
@@ -1336,11 +1333,11 @@ HIDDEN void GuiLoadConfig(struct pwasio_gui_conf *conf)
  */
 
 DEFINE_THISCALL_WRAPPER(Future,12)
-HIDDEN ASIOError STDMETHODCALLTYPE Future(LPWINEASIO iface, LONG selector, void *opt)
+HIDDEN ASIOError STDMETHODCALLTYPE Future(LPASIO pinst, LONG selector, void *opt)
 {
-    IWineASIOImpl           *This = (IWineASIOImpl *) iface;
+    PipeWireASIO           *This = (PipeWireASIO *) pinst;
 
-    TRACE("iface: %p, selector: %i, opt: %p\n", iface, selector, opt);
+    TRACE("this: %p, selector: %i, opt: %p\n", This, selector, opt);
 
     switch (selector)
     {
@@ -1417,10 +1414,10 @@ HIDDEN ASIOError STDMETHODCALLTYPE Future(LPWINEASIO iface, LONG selector, void 
  */
 
 DEFINE_THISCALL_WRAPPER(OutputReady,4)
-HIDDEN ASIOError STDMETHODCALLTYPE OutputReady(LPWINEASIO iface)
+HIDDEN ASIOError STDMETHODCALLTYPE OutputReady(LPASIO pinst)
 {
     /* disabled to stop stand alone NI programs from spamming the console
-    TRACE("iface: %p\n", iface); */
+    TRACE("this: %p\n", pinst); */
     return ASE_NotPresent;
 }
 
@@ -1429,9 +1426,9 @@ HIDDEN ASIOError STDMETHODCALLTYPE OutputReady(LPWINEASIO iface)
  */
 
 static void pipewire_state_changed_callback(void *data, enum pw_filter_state from, enum pw_filter_state to, char const *error) {
-    IWineASIOImpl *This = (IWineASIOImpl*)data;
+    PipeWireASIO *This = (PipeWireASIO*)data;
 
-    printf("state_changed: iface:%p state changed from %s to %s", This, pw_filter_state_as_string(from), pw_filter_state_as_string(to));
+    printf("state_changed: this:%p state changed from %s to %s", This, pw_filter_state_as_string(from), pw_filter_state_as_string(to));
     if (error) {
         printf(": ERROR %s\n", error);
     } else {
@@ -1444,24 +1441,24 @@ static void pipewire_state_changed_callback(void *data, enum pw_filter_state fro
 }
 
 static void pipewire_io_changed_callback(void *data, void *port, uint32_t id, void *area, uint32_t size) {
-    IWineASIOImpl *This = (IWineASIOImpl*)data;
+    PipeWireASIO *This = (PipeWireASIO*)data;
 
-    printf("io_changed: iface:%p IO changed on port %p: 0x%04x\n", This, port, id);
+    printf("io_changed: this:%p IO changed on port %p: 0x%04x\n", This, port, id);
 }
 
 static void pipewire_param_changed_callback(void *data, void *port, uint32_t id, struct spa_pod const *param) {
-    IWineASIOImpl *This = (IWineASIOImpl*)data;
+    PipeWireASIO *This = (PipeWireASIO*)data;
 
-    printf("param_changed: iface:%p param 0x%04x changed on port %p\n", This, id, port);
+    printf("param_changed: this:%p param 0x%04x changed on port %p\n", This, id, port);
 }
 
 static void pipewire_add_buffer_callback(void *data, void *port, struct pw_buffer *buffer) {
-    IWineASIOImpl *This = (IWineASIOImpl*)data;
+    PipeWireASIO *This = (PipeWireASIO*)data;
 
-    printf("add_buffer: iface:%p port:%p, buffer:%p\n", This, port, buffer);
+    printf("add_buffer: this:%p port:%p, buffer:%p\n", This, port, buffer);
 
-    for (int idx = 0; idx < This->wineasio_number_inputs + This->wineasio_number_outputs; ++idx) {
-        struct io_port *chan = &This->input_channel[idx];
+    for (int idx = 0; idx < This->conf_number_inputs + This->conf_number_outputs; ++idx) {
+        struct io_port *chan = &This->input_channels[idx];
         if (chan->port == port) {
             if (chan->buffers[0]) {
                 if (chan->buffers[1]) {
@@ -1493,17 +1490,17 @@ static void pipewire_add_buffer_callback(void *data, void *port, struct pw_buffe
 }
 
 static void pipewire_remove_buffer_callback(void *data, void *port, struct pw_buffer *buffer) {
-    IWineASIOImpl *This = (IWineASIOImpl*)data;
+    PipeWireASIO *This = (PipeWireASIO*)data;
 
-    printf("remove_buffer: iface:%p port:%p, buffer:%p\n", This, port, buffer);
+    printf("remove_buffer: this:%p port:%p, buffer:%p\n", This, port, buffer);
 }
 
 static void pipewire_process_callback(void *data, struct spa_io_position *position) {
-    IWineASIOImpl *This = (IWineASIOImpl*)data;
+    PipeWireASIO *This = (PipeWireASIO*)data;
     int            idx;
     size_t         sample_count = position->clock.duration;
 
-    //printf("process: iface:%p\n", This);
+    //printf("process: this:%p\n", This);
 
     // Failsafe, just to be sure we have any active ports.
     if (This->asio_active_inputs == 0 && This->asio_active_outputs == 0)
@@ -1512,10 +1509,10 @@ static void pipewire_process_callback(void *data, struct spa_io_position *positi
     /* output silence if the ASIO callback isn't running yet */
     if (This->asio_driver_state != Running)
     {
-        for (idx = 0; idx < This->wineasio_number_outputs; ++idx) {
-            if (!This->output_channel[idx].active)
+        for (idx = 0; idx < This->conf_number_outputs; ++idx) {
+            if (!This->output_channels[idx].active)
                 continue;
-            void *buffer = pw_filter_get_dsp_buffer(This->output_channel[idx].port, sample_count);
+            void *buffer = pw_filter_get_dsp_buffer(This->output_channels[idx].port, sample_count);
             if (buffer)
                 bzero(buffer, sizeof(float) * sample_count);
         }
@@ -1530,8 +1527,8 @@ static void pipewire_process_callback(void *data, struct spa_io_position *positi
     struct pw_buffer *buffer;
     struct io_port *chan;
     int buf_idx = -1, loc_idx;
-    for (idx = 0; idx < This->wineasio_number_inputs; ++idx) {
-        chan = &This->input_channel[idx];
+    for (idx = 0; idx < This->conf_number_inputs; ++idx) {
+        chan = &This->input_channels[idx];
         if (!chan->active)
             continue;
         //chan->buffers[This->asio_buffer_index] = pw_filter_dequeue_buffer(chan->port);
@@ -1550,8 +1547,8 @@ static void pipewire_process_callback(void *data, struct spa_io_position *positi
         }
         pw_filter_queue_buffer(chan->port, buffer);
     }
-    for (idx = 0; idx < This->wineasio_number_outputs; ++idx) {
-        chan = &This->output_channel[idx];
+    for (idx = 0; idx < This->conf_number_outputs; ++idx) {
+        chan = &This->output_channels[idx];
         if (!chan->active)
             continue;
         //chan->buffers[This->asio_buffer_index] = pw_filter_dequeue_buffer(chan->port);
@@ -1671,12 +1668,12 @@ static DWORD WINAPI wine_thread_runner(LPVOID arg)
     return 0;
 }
 
-static void request_reset(IWineASIOImpl *This) {
+static void request_reset(PipeWireASIO *This) {
     if (This->asio_callbacks->asioMessage(kAsioSelectorSupported, kAsioResetRequest, 0 , 0))
         This->asio_callbacks->asioMessage(kAsioResetRequest, 0, 0, 0);
 }
 
-static void get_nodes_by_name(IWineASIOImpl *This) {
+static void get_nodes_by_name(PipeWireASIO *This) {
     char *namebuf = NULL;
     int namebuf_len = 0;
     int required_len;
@@ -1684,8 +1681,8 @@ static void get_nodes_by_name(IWineASIOImpl *This) {
     This->current_input_node = NULL;
     This->current_output_node = NULL;
 
-    if (This->pwasio_input_device_name[0]) {
-        required_len = WideCharToMultiByte(CP_UTF8, 0, This->pwasio_input_device_name, -1, NULL, 0, NULL, NULL);
+    if (This->input_device_name[0]) {
+        required_len = WideCharToMultiByte(CP_UTF8, 0, This->input_device_name, -1, NULL, 0, NULL, NULL);
         if (required_len == 0) {
             fputs("ERROR: Failed to convert input device name to UTF-8\n", stderr);
         } else {
@@ -1694,7 +1691,7 @@ static void get_nodes_by_name(IWineASIOImpl *This) {
                 namebuf = malloc(required_len);
                 namebuf_len = required_len;
             }
-            if (0 == WideCharToMultiByte(CP_UTF8, 0, This->pwasio_input_device_name, -1, namebuf, namebuf_len, NULL, NULL)) {
+            if (0 == WideCharToMultiByte(CP_UTF8, 0, This->input_device_name, -1, namebuf, namebuf_len, NULL, NULL)) {
                 // Should never happen.
                 abort();
             }
@@ -1702,8 +1699,8 @@ static void get_nodes_by_name(IWineASIOImpl *This) {
         }
     }
 
-    if (This->pwasio_output_device_name[0]) {
-        required_len = WideCharToMultiByte(CP_UTF8, 0, This->pwasio_output_device_name, -1, NULL, 0, NULL, NULL);
+    if (This->output_device_name[0]) {
+        required_len = WideCharToMultiByte(CP_UTF8, 0, This->output_device_name, -1, NULL, 0, NULL, NULL);
         if (required_len == 0) {
             fputs("ERROR: Failed to convert output device name to UTF-8\n", stderr);
         } else {
@@ -1712,7 +1709,7 @@ static void get_nodes_by_name(IWineASIOImpl *This) {
                 namebuf = malloc(required_len);
                 namebuf_len = required_len;
             }
-            if (0 == WideCharToMultiByte(CP_UTF8, 0, This->pwasio_output_device_name, -1, namebuf, namebuf_len, NULL, NULL)) {
+            if (0 == WideCharToMultiByte(CP_UTF8, 0, This->output_device_name, -1, namebuf, namebuf_len, NULL, NULL)) {
                 // Should never happen.
                 abort();
             }
@@ -1730,7 +1727,7 @@ static void get_nodes_by_name(IWineASIOImpl *This) {
     }
 }
 
-static void connect_io_port(IWineASIOImpl *This, struct io_port *port, uint32_t idx, enum spa_direction dir) {
+static void connect_io_port(PipeWireASIO *This, struct io_port *port, uint32_t idx, enum spa_direction dir) {
     struct pw_node *node;
     uint16_t dst_port_id;
     switch (This->gui_conf.cf_io_type) {
@@ -1833,7 +1830,7 @@ static void connect_io_port(IWineASIOImpl *This, struct io_port *port, uint32_t 
     user_pw_unlock_loop(This->pw_helper);
 }
 
-static void dispose_io_port(IWineASIOImpl *This, struct io_port *port, enum spa_direction dir) {
+static void dispose_io_port(PipeWireASIO *This, struct io_port *port, enum spa_direction dir) {
     if (!port->active)
         return;
     port->active = false;
@@ -1874,7 +1871,7 @@ static const WCHAR value_pwasio_buffersize[] = u"Buffer size";
 static const WCHAR value_pwasio_input_device[] = u"Input device";
 static const WCHAR value_pwasio_output_device[] = u"Output device";
 
-static void store_config(IWineASIOImpl *This) {
+static void store_config(PipeWireASIO *This) {
     HKEY  hkey;
     LONG  result;
     DWORD bool_value;
@@ -1882,16 +1879,16 @@ static void store_config(IWineASIOImpl *This) {
     /* create registry entries with defaults if not present */
     result = RegCreateKeyExW(HKEY_CURRENT_USER, key_software_wine_pwasio, 0, NULL, 0, KEY_ALL_ACCESS, NULL, &hkey, NULL);
 
-    result = RegSetValueExW(hkey, value_pwasio_number_inputs, 0, REG_DWORD, (LPBYTE) &This->wineasio_number_inputs, sizeof(This->wineasio_number_inputs));
-    result = RegSetValueExW(hkey, value_pwasio_number_outputs, 0, REG_DWORD, (LPBYTE) &This->wineasio_number_outputs, sizeof(This->wineasio_number_outputs));
-    result = RegSetValueExW(hkey, value_pwasio_buffersize, 0, REG_DWORD, (LPBYTE) &This->wineasio_preferred_buffersize, sizeof(This->wineasio_preferred_buffersize));
-    bool_value = This->wineasio_fixed_buffersize;
+    result = RegSetValueExW(hkey, value_pwasio_number_inputs, 0, REG_DWORD, (LPBYTE) &This->conf_number_inputs, sizeof(This->conf_number_inputs));
+    result = RegSetValueExW(hkey, value_pwasio_number_outputs, 0, REG_DWORD, (LPBYTE) &This->conf_number_outputs, sizeof(This->conf_number_outputs));
+    result = RegSetValueExW(hkey, value_pwasio_buffersize, 0, REG_DWORD, (LPBYTE) &This->conf_preferred_buffersize, sizeof(This->conf_preferred_buffersize));
+    bool_value = This->conf_fixed_buffersize;
     result = RegSetValueExW(hkey, value_pwasio_buffersize_fixed, 0, REG_DWORD, (LPBYTE) &bool_value, sizeof(bool_value));
-    result = RegSetValueExW(hkey, value_pwasio_input_device, 0, REG_SZ, (LPBYTE) &This->pwasio_input_device_name, sizeof(This->pwasio_input_device_name));
-    result = RegSetValueExW(hkey, value_pwasio_output_device, 0, REG_SZ, (LPBYTE) &This->pwasio_output_device_name, sizeof(This->pwasio_output_device_name));
+    result = RegSetValueExW(hkey, value_pwasio_input_device, 0, REG_SZ, (LPBYTE) &This->input_device_name, sizeof(This->input_device_name));
+    result = RegSetValueExW(hkey, value_pwasio_output_device, 0, REG_SZ, (LPBYTE) &This->output_device_name, sizeof(This->output_device_name));
 }
 
-static VOID configure_driver(IWineASIOImpl *This)
+static VOID configure_driver(PipeWireASIO *This)
 {
     HKEY    hkey;
     LONG    result, value;
@@ -1913,14 +1910,14 @@ static VOID configure_driver(IWineASIOImpl *This)
     This->asio_time_info_mode = FALSE;
     This->asio_version = 21;
 
-    This->wineasio_number_inputs = 16;
-    This->wineasio_number_outputs = 16;
-    This->wineasio_fixed_buffersize = FALSE;
-    This->wineasio_preferred_buffersize = ASIO_PREFERRED_BUFFERSIZE;
+    This->conf_number_inputs = 16;
+    This->conf_number_outputs = 16;
+    This->conf_fixed_buffersize = FALSE;
+    This->conf_preferred_buffersize = ASIO_PREFERRED_BUFFERSIZE;
 
     This->client_name[0] = 0;
-    This->input_channel = NULL;
-    This->output_channel = NULL;
+    This->input_channels = NULL;
+    This->output_channels = NULL;
 
     /* create registry entries with defaults if not present */
     result = RegCreateKeyExW(HKEY_CURRENT_USER, key_software_wine_pwasio, 0, NULL, 0, KEY_ALL_ACCESS, NULL, &hkey, NULL);
@@ -1930,13 +1927,13 @@ static VOID configure_driver(IWineASIOImpl *This)
     if (RegQueryValueExW(hkey, value_pwasio_number_inputs, NULL, &type, (LPBYTE) &value, &size) == ERROR_SUCCESS)
     {
         if (type == REG_DWORD)
-            This->wineasio_number_inputs = value;
+            This->conf_number_inputs = value;
     }
     else
     {
         type = REG_DWORD;
         size = sizeof(DWORD);
-        value = This->wineasio_number_inputs;
+        value = This->conf_number_inputs;
         result = RegSetValueExW(hkey, value_pwasio_number_inputs, 0, REG_DWORD, (LPBYTE) &value, size);
     }
 
@@ -1945,13 +1942,13 @@ static VOID configure_driver(IWineASIOImpl *This)
     if (RegQueryValueExW(hkey, value_pwasio_number_outputs, NULL, &type, (LPBYTE) &value, &size) == ERROR_SUCCESS)
     {
         if (type == REG_DWORD)
-            This->wineasio_number_outputs = value;
+            This->conf_number_outputs = value;
     }
     else
     {
         type = REG_DWORD;
         size = sizeof(DWORD);
-        value = This->wineasio_number_outputs;
+        value = This->conf_number_outputs;
         result = RegSetValueExW(hkey, value_pwasio_number_outputs, 0, REG_DWORD, (LPBYTE) &value, size);
     }
 
@@ -1960,13 +1957,13 @@ static VOID configure_driver(IWineASIOImpl *This)
     if (RegQueryValueExW(hkey, value_pwasio_buffersize_fixed, NULL, &type, (LPBYTE) &value, &size) == ERROR_SUCCESS)
     {
         if (type == REG_DWORD)
-            This->wineasio_fixed_buffersize = value;
+            This->conf_fixed_buffersize = value;
     }
     else
     {
         type = REG_DWORD;
         size = sizeof(DWORD);
-        value = This->wineasio_fixed_buffersize;
+        value = This->conf_fixed_buffersize;
         result = RegSetValueExW(hkey, value_pwasio_buffersize_fixed, 0, REG_DWORD, (LPBYTE) &value, size);
     }
 
@@ -1975,52 +1972,52 @@ static VOID configure_driver(IWineASIOImpl *This)
     if (RegQueryValueExW(hkey, value_pwasio_buffersize, NULL, &type, (LPBYTE) &value, &size) == ERROR_SUCCESS)
     {
         if (type == REG_DWORD)
-            This->wineasio_preferred_buffersize = value;
+            This->conf_preferred_buffersize = value;
     }
     else
     {
         type = REG_DWORD;
         size = sizeof(DWORD);
-        value = This->wineasio_preferred_buffersize;
+        value = This->conf_preferred_buffersize;
         result = RegSetValueExW(hkey, value_pwasio_buffersize, 0, REG_DWORD, (LPBYTE) &value, size);
     }
 
     /* input device name */
-    This->pwasio_input_device_name[0] = 0;
+    This->input_device_name[0] = 0;
     size = DEVICE_NAME_SIZE;
-    status = RegQueryValueExW(hkey, value_pwasio_input_device, NULL, &type, (LPBYTE) &This->pwasio_input_device_name, &size);
+    status = RegQueryValueExW(hkey, value_pwasio_input_device, NULL, &type, (LPBYTE) &This->input_device_name, &size);
     if (status == ERROR_SUCCESS || status == ERROR_MORE_DATA)
     {
         if (type == REG_SZ) {
             if (size > DEVICE_NAME_SIZE - 1)
                 size = DEVICE_NAME_SIZE - 1;
 
-            This->pwasio_input_device_name[size] = 0;
+            This->input_device_name[size] = 0;
         }
     }
     else
     {
         size = 0;
-        result = RegSetValueExW(hkey, value_pwasio_input_device, 0, REG_SZ, (LPBYTE) &This->pwasio_input_device_name, size);
+        result = RegSetValueExW(hkey, value_pwasio_input_device, 0, REG_SZ, (LPBYTE) &This->input_device_name, size);
     }
 
     /* output device name */
-    This->pwasio_output_device_name[0] = 0;
+    This->output_device_name[0] = 0;
     size = DEVICE_NAME_SIZE;
-    status = RegQueryValueExW(hkey, value_pwasio_output_device, NULL, &type, (LPBYTE) &This->pwasio_output_device_name, &size);
+    status = RegQueryValueExW(hkey, value_pwasio_output_device, NULL, &type, (LPBYTE) &This->output_device_name, &size);
     if (status == ERROR_SUCCESS || status == ERROR_MORE_DATA)
     {
         if (type == REG_SZ) {
             if (size > DEVICE_NAME_SIZE - 1)
                 size = DEVICE_NAME_SIZE - 1;
 
-            This->pwasio_output_device_name[size] = 0;
+            This->output_device_name[size] = 0;
         }
     }
     else
     {
         size = 0;
-        result = RegSetValueExW(hkey, value_pwasio_output_device, 0, REG_SZ, (LPBYTE) &This->pwasio_output_device_name, size);
+        result = RegSetValueExW(hkey, value_pwasio_output_device, 0, REG_SZ, (LPBYTE) &This->output_device_name, size);
     }
 
     /* override the PipeWire client name gotten from the application name */
@@ -2047,7 +2044,7 @@ static VOID configure_driver(IWineASIOImpl *This)
         errno = 0;
         result = strtol(environment_variable, 0, 10);
         if (errno != ERANGE)
-            This->wineasio_number_inputs = result;
+            This->conf_number_inputs = result;
     }
 
     if (GetEnvironmentVariableA("PWASIO_NUMBER_OUTPUTS", environment_variable, MAX_ENVIRONMENT_SIZE))
@@ -2055,12 +2052,12 @@ static VOID configure_driver(IWineASIOImpl *This)
         errno = 0;
         result = strtol(environment_variable, 0, 10);
         if (errno != ERANGE)
-            This->wineasio_number_outputs = result;
+            This->conf_number_outputs = result;
     }
 
     if (GetEnvironmentVariableA("PWASIO_BUFFERSIZE_IS_FIXED", environment_variable, MAX_ENVIRONMENT_SIZE))
     {
-        parse_boolean_env(environment_variable, &This->wineasio_fixed_buffersize);
+        parse_boolean_env(environment_variable, &This->conf_fixed_buffersize);
     }
 
     if (GetEnvironmentVariableA("PWASIO_PREFERRED_BUFFERSIZE", environment_variable, MAX_ENVIRONMENT_SIZE))
@@ -2068,19 +2065,19 @@ static VOID configure_driver(IWineASIOImpl *This)
         errno = 0;
         result = strtol(environment_variable, 0, 10);
         if (errno != ERANGE)
-            This->wineasio_preferred_buffersize = result;
+            This->conf_preferred_buffersize = result;
     }
 
     /* if wineasio_preferred_buffersize is out of range, then set to ASIO_PREFERRED_BUFFERSIZE */
-    if (!(This->wineasio_preferred_buffersize >= ASIO_MINIMUM_BUFFERSIZE
-            && This->wineasio_preferred_buffersize <= ASIO_MAXIMUM_BUFFERSIZE))
-        This->wineasio_preferred_buffersize = ASIO_PREFERRED_BUFFERSIZE;
+    if (!(This->conf_preferred_buffersize >= ASIO_MINIMUM_BUFFERSIZE
+            && This->conf_preferred_buffersize <= ASIO_MAXIMUM_BUFFERSIZE))
+        This->conf_preferred_buffersize = ASIO_PREFERRED_BUFFERSIZE;
 }
 
 /* Allocate the interface pointer and associate it with the vtbl/WineASIO object */
-HRESULT WINAPI WineASIOCreateInstance(REFIID riid, LPVOID *ppobj, IUnknown *cls_factory)
+HRESULT WINAPI PipeWireASIOCreate(REFIID riid, LPVOID *ppobj, IUnknown *cls_factory)
 {
-    IWineASIOImpl   *pobj;
+    PipeWireASIO   *pobj;
 
     /* TRACE("riid: %s, ppobj: %p\n", debugstr_guid(riid), ppobj); */
 
@@ -2091,7 +2088,7 @@ HRESULT WINAPI WineASIOCreateInstance(REFIID riid, LPVOID *ppobj, IUnknown *cls_
         return E_OUTOFMEMORY;
     }
 
-    pobj->lpVtbl = &WineASIO_Vtbl;
+    pobj->lpVtbl = &PipeWireASIO_Vtbl;
     pobj->ref = 1;
     pobj->cls_factory = cls_factory;
     cls_factory->lpVtbl->AddRef(cls_factory);

@@ -6,8 +6,8 @@ ifneq ($(M),)
 ARCH_FLAG = -m$(M)
 endif
 
-CFLAGS = -fpic -std=c++20 -ggdb $(ARCH_FLAG)
-LFLAGS = $(ARCH_FLAG) -lQt5Core -lQt5Widgets -lQt5Gui -fpic -lpipewire-0.3
+CXXFLAGS = -fpic -std=c++20 -ggdb $(ARCH_FLAG)
+LDFLAGS = $(ARCH_FLAG) -lQt5Core -lQt5Widgets -lQt5Gui -fpic -lpipewire-0.3
 
 BUILD_DIR = ../build$(M)
 COMMON_OBJS := dialog.o device_selector.o device_chooser.o
@@ -18,11 +18,11 @@ app: $(BUILD_DIR)/app
 objs = $(1:%.o=$(BUILD_DIR)/%.o)
 
 $(BUILD_DIR)/app: $(call objs,$(COMMON_OBJS) app.o pw_helper.o)
-	$(CXX) -o $@ $(LFLAGS) $^
+	$(CXX) -o $@ $(LDFLAGS) $^
 
 ifneq ($(M),)
 $(BUILD_DIR)/libpwasio_gui.so: $(call objs,$(COMMON_OBJS) gui.o)
-	$(CXX) -o $@ -shared $(LFLAGS) $^ $(BUILD_DIR)/$(wineasio_dll_MODULE).so
+	$(CXX) -o $@ -shared $(LDFLAGS) $^ $(BUILD_DIR)/$(ASIO_DLL_MODULE).so
 endif
 
 device_selector.cpp: ui_device_selector.hpp
@@ -38,11 +38,11 @@ gui.cpp: gui_priv.moc
 
 $(BUILD_DIR)/%.o: %.cpp
 	@$(shell mkdir -p $(BUILD_DIR))
-	$(CXX) -c -o $@ $(CFLAGS) $(QT_CFLAGS) $(PW_CFLAGS) $<
+	$(CXX) -c -o $@ $(CXXFLAGS) $(QT_CFLAGS) $(PW_CFLAGS) $<
 
 $(BUILD_DIR)/pw_helper.o: ../pw_helper.cpp
 	@$(shell mkdir -p $(BUILD_DIR))
-	$(CXX) -c -o $@ $(CFLAGS) $(PW_CFLAGS) $<
+	$(CXX) -c -o $@ $(CXXFLAGS) $(PW_CFLAGS) $<
 
 %.moc: %.hpp
 	moc -o $@ $<
