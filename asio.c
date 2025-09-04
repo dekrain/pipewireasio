@@ -105,18 +105,21 @@ WINE_DEFAULT_DEBUG_CHANNEL(asio);
 #define THISCALL_NAME(func) __ASM_NAME("__thiscall_" #func)
 #define __thiscall __stdcall
 #define DEFINE_THISCALL_WRAPPER(func,args) \
-    extern void THISCALL(func)(void); \
     __ASM_GLOBAL_FUNC(__thiscall_ ## func, \
                       "popl %eax\n\t" \
                       "pushl %ecx\n\t" \
                       "pushl %eax\n\t" \
                       "jmp " __ASM_NAME(#func) __ASM_STDCALL(args) )
+#define THISCALL_DECL(rettype,func,args) \
+    HIDDEN rettype STDMETHODCALLTYPE func args; \
+    extern HIDDEN rettype STDMETHODCALLTYPE THISCALL(func) args
 #else /* __i386__ */
 
 #define THISCALL(func) func
 #define THISCALL_NAME(func) __ASM_NAME(#func)
 #define __thiscall __stdcall
 #define DEFINE_THISCALL_WRAPPER(func,args) /* nothing */
+#define THISCALL_DECL(rettype,func,args) HIDDEN rettype STDMETHODCALLTYPE func args
 
 #endif /* __i386__ */
 
@@ -242,53 +245,27 @@ enum { Loaded, Initialized, Prepared, Running };
 HIDDEN HRESULT   STDMETHODCALLTYPE      QueryInterface(LPASIO pinst, REFIID riid, void **ppvObject);
 HIDDEN ULONG     STDMETHODCALLTYPE      AddRef(LPASIO pinst);
 HIDDEN ULONG     STDMETHODCALLTYPE      Release(LPASIO pinst);
-HIDDEN ASIOBool  STDMETHODCALLTYPE      Init(LPASIO pinst, void *sysRef);
-HIDDEN void      STDMETHODCALLTYPE      GetDriverName(LPASIO pinst, char *name);
-HIDDEN LONG      STDMETHODCALLTYPE      GetDriverVersion(LPASIO pinst);
-HIDDEN void      STDMETHODCALLTYPE      GetErrorMessage(LPASIO pinst, char *string);
-HIDDEN ASIOError STDMETHODCALLTYPE      Start(LPASIO pinst);
-HIDDEN ASIOError STDMETHODCALLTYPE      Stop(LPASIO pinst);
-HIDDEN ASIOError STDMETHODCALLTYPE      GetChannels (LPASIO pinst, LONG *numInputChannels, LONG *numOutputChannels);
-HIDDEN ASIOError STDMETHODCALLTYPE      GetLatencies(LPASIO pinst, LONG *inputLatency, LONG *outputLatency);
-HIDDEN ASIOError STDMETHODCALLTYPE      GetBufferSize(LPASIO pinst, LONG *minSize, LONG *maxSize, LONG *preferredSize, LONG *granularity);
-HIDDEN ASIOError STDMETHODCALLTYPE      CanSampleRate(LPASIO pinst, ASIOSampleRate sampleRate);
-HIDDEN ASIOError STDMETHODCALLTYPE      GetSampleRate(LPASIO pinst, ASIOSampleRate *sampleRate);
-HIDDEN ASIOError STDMETHODCALLTYPE      SetSampleRate(LPASIO pinst, ASIOSampleRate sampleRate);
-HIDDEN ASIOError STDMETHODCALLTYPE      GetClockSources(LPASIO pinst, ASIOClockSource *clocks, LONG *numSources);
-HIDDEN ASIOError STDMETHODCALLTYPE      SetClockSource(LPASIO pinst, LONG index);
-HIDDEN ASIOError STDMETHODCALLTYPE      GetSamplePosition(LPASIO pinst, ASIOSamples *sPos, ASIOTimeStamp *tStamp);
-HIDDEN ASIOError STDMETHODCALLTYPE      GetChannelInfo(LPASIO pinst, ASIOChannelInfo *info);
-HIDDEN ASIOError STDMETHODCALLTYPE      CreateBuffers(LPASIO pinst, ASIOBufferInfo *bufferInfo, LONG numChannels, LONG bufferSize, ASIOCallbacks *asioCallbacks);
-HIDDEN ASIOError STDMETHODCALLTYPE      DisposeBuffers(LPASIO pinst);
-HIDDEN ASIOError STDMETHODCALLTYPE      ControlPanel(LPASIO pinst);
-HIDDEN ASIOError STDMETHODCALLTYPE      Future(LPASIO pinst, LONG selector, void *opt);
-HIDDEN ASIOError STDMETHODCALLTYPE      OutputReady(LPASIO pinst);
-
-/*
- * thiscall wrappers for the vtbl (as seen from app side 32bit)
- */
-
-HIDDEN void __thiscall_Init(void);
-HIDDEN void __thiscall_GetDriverName(void);
-HIDDEN void __thiscall_GetDriverVersion(void);
-HIDDEN void __thiscall_GetErrorMessage(void);
-HIDDEN void __thiscall_Start(void);
-HIDDEN void __thiscall_Stop(void);
-HIDDEN void __thiscall_GetChannels(void);
-HIDDEN void __thiscall_GetLatencies(void);
-HIDDEN void __thiscall_GetBufferSize(void);
-HIDDEN void __thiscall_CanSampleRate(void);
-HIDDEN void __thiscall_GetSampleRate(void);
-HIDDEN void __thiscall_SetSampleRate(void);
-HIDDEN void __thiscall_GetClockSources(void);
-HIDDEN void __thiscall_SetClockSource(void);
-HIDDEN void __thiscall_GetSamplePosition(void);
-HIDDEN void __thiscall_GetChannelInfo(void);
-HIDDEN void __thiscall_CreateBuffers(void);
-HIDDEN void __thiscall_DisposeBuffers(void);
-HIDDEN void __thiscall_ControlPanel(void);
-HIDDEN void __thiscall_Future(void);
-HIDDEN void __thiscall_OutputReady(void);
+THISCALL_DECL(ASIOBool,  Init,              (LPASIO pinst, void *sysRef));
+THISCALL_DECL(void,      GetDriverName,     (LPASIO pinst, char *name));
+THISCALL_DECL(LONG,      GetDriverVersion,  (LPASIO pinst));
+THISCALL_DECL(void,      GetErrorMessage,   (LPASIO pinst, char *string));
+THISCALL_DECL(ASIOError, Start,             (LPASIO pinst));
+THISCALL_DECL(ASIOError, Stop,              (LPASIO pinst));
+THISCALL_DECL(ASIOError, GetChannels,       (LPASIO pinst, LONG *numInputChannels, LONG *numOutputChannels));
+THISCALL_DECL(ASIOError, GetLatencies,      (LPASIO pinst, LONG *inputLatency, LONG *outputLatency));
+THISCALL_DECL(ASIOError, GetBufferSize,     (LPASIO pinst, LONG *minSize, LONG *maxSize, LONG *preferredSize, LONG *granularity));
+THISCALL_DECL(ASIOError, CanSampleRate,     (LPASIO pinst, ASIOSampleRate sampleRate));
+THISCALL_DECL(ASIOError, GetSampleRate,     (LPASIO pinst, ASIOSampleRate *sampleRate));
+THISCALL_DECL(ASIOError, SetSampleRate,     (LPASIO pinst, ASIOSampleRate sampleRate));
+THISCALL_DECL(ASIOError, GetClockSources,   (LPASIO pinst, ASIOClockSource *clocks, LONG *numSources));
+THISCALL_DECL(ASIOError, SetClockSource,    (LPASIO pinst, LONG index));
+THISCALL_DECL(ASIOError, GetSamplePosition, (LPASIO pinst, ASIOSamples *sPos, ASIOTimeStamp *tStamp));
+THISCALL_DECL(ASIOError, GetChannelInfo,    (LPASIO pinst, ASIOChannelInfo *info));
+THISCALL_DECL(ASIOError, CreateBuffers,     (LPASIO pinst, ASIOBufferInfo *bufferInfo, LONG numChannels, LONG bufferSize, ASIOCallbacks *asioCallbacks));
+THISCALL_DECL(ASIOError, DisposeBuffers,    (LPASIO pinst));
+THISCALL_DECL(ASIOError, ControlPanel,      (LPASIO pinst));
+THISCALL_DECL(ASIOError, Future,            (LPASIO pinst, LONG selector, void *opt));
+THISCALL_DECL(ASIOError, OutputReady,       (LPASIO pinst));
 
 /*
  *  Support functions
@@ -335,7 +312,7 @@ static const IASIOVtbl PipeWireASIO_Vtbl =
     THISCALL(DisposeBuffers),
     THISCALL(ControlPanel),
     THISCALL(Future),
-    THISCALL(OutputReady)
+    THISCALL(OutputReady),
 };
 
 /*
