@@ -40,7 +40,6 @@ endif
 CEXTRA                = -m$(M) -D_REENTRANT -fPIC -Wall -pipe -std=gnu11 -D_GNU_SOURCE
 CEXTRA               += -fno-strict-aliasing -Wdeclaration-after-statement -Wwrite-strings -Wpointer-arith
 CEXTRA               += -Werror=implicit-function-declaration
-CEXTRA               += $(shell pkg-config --cflags jack)
 CEXTRA               += '-DDRIVER_DLL="$(wineasio_dll_MODULE)"'
 RCEXTRA               =
 INCLUDE_PATH          = -I. -Irtaudio/include
