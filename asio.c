@@ -1970,6 +1970,8 @@ static VOID configure_driver(PipeWireASIO *This)
                 size = DEVICE_NAME_SIZE - 1;
 
             This->input_device_name[size] = 0;
+        } else {
+            This->input_device_name[0] = 0;
         }
     }
     else
@@ -1989,6 +1991,8 @@ static VOID configure_driver(PipeWireASIO *This)
                 size = DEVICE_NAME_SIZE - 1;
 
             This->output_device_name[size] = 0;
+        } else {
+            This->output_device_name[0] = 0;
         }
     }
     else
