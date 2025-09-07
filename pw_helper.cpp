@@ -400,8 +400,8 @@ static int meta_property_handler(void *proxy, uint32_t subject, char const *key,
 	if (!meta->vtable) {
 		return 0;
 	}
-	std::string_view svkey = key;
-	std::string_view svtype = type;
+	std::string_view svkey = key ?: std::string_view {};
+	std::string_view svtype = type ?: std::string_view {};
 	//std::printf("[DEBUG] Got property '%s' of type '%s'\n", key, type);
 	for (size_t idx = 0; idx != meta->vtable->num_properties; ++idx) {
 		auto const *prop = meta->vtable->properties[idx];
@@ -450,8 +450,12 @@ static MetaPropResult meta_preproc_json(ProxyPtr<Metadata> proxy, MetadataPropHa
 	auto *jhandler = static_cast<MetadataJsonHandler const *>(handler);
 	MetadataJson *json = static_cast<MetadataJson *>(prop);
 	struct spa_json parser;
-	spa_json_init(&parser, prop->value, std::strlen(prop->value));
-	return jhandler->handler(proxy, jhandler, json, &parser);
+	if (prop->value) {
+		spa_json_init(&parser, prop->value, std::strlen(prop->value));
+		return jhandler->handler(proxy, jhandler, json, &parser);
+	} else {
+		return jhandler->handler(proxy, jhandler, json, nullptr);
+	}
 }
 
 static bool parse_json_dict(struct spa_json *parser, char *heap, size_t heap_size, std::span<char const * const> keys, std::span<char *> values) {
@@ -531,8 +535,11 @@ static char const *default_nodes_keys[] = {
 static MetaPropResult default_nodes_source_handler(ProxyPtr<Metadata> proxy, MetadataJsonHandler const*, MetadataJson *prop, struct spa_json *parser) {
 	char const *source;
 	char *values[1] = {};
+	if (!parser)
+		return MetaPropResult::Stop;
 	if (!parse_json_dict(parser, prop->pod_buffer, sizeof prop->pod_buffer, default_nodes_keys, values)) {
 		std::fputs("[DEBUG] Invalid JSON dict\n", stderr);
+		return MetaPropResult::Stop;
 	}
 
 	source = values[0];
@@ -551,8 +558,11 @@ static MetaPropResult default_nodes_source_handler(ProxyPtr<Metadata> proxy, Met
 static MetaPropResult default_nodes_sink_handler(ProxyPtr<Metadata> proxy, MetadataJsonHandler const*, MetadataJson *prop, struct spa_json *parser) {
 	char const *sink;
 	char *values[1] = {};
+	if (!parser)
+		return MetaPropResult::Stop;
 	if (!parse_json_dict(parser, prop->pod_buffer, sizeof prop->pod_buffer, default_nodes_keys, values)) {
 		std::fputs("[DEBUG] Invalid JSON dict\n", stderr);
+		return MetaPropResult::Stop;
 	}
 
 	sink = values[0];
