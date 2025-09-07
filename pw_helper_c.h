@@ -14,9 +14,6 @@ void user_pw_destroy_helper(struct user_pw_helper *helper);
 struct pw_node *user_pw_get_default_node(struct user_pw_helper *helper, enum spa_direction direction);
 struct pw_node *user_pw_find_node_by_name(struct user_pw_helper *helper, char const *name);
 
-void user_pw_lock_loop(struct user_pw_helper *helper);
-void user_pw_unlock_loop(struct user_pw_helper *helper);
-
 #ifdef __cplusplus
 }
 #endif

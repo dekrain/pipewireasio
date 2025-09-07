@@ -41,6 +41,7 @@
 #include <spa/param/latency-utils.h>
 #include <spa/param/latency.h>
 #include <spa/utils/dict.h>
+#include <pipewire/thread-loop.h>
 #include <pipewire/core.h>
 #include <pipewire/context.h>
 #include <pipewire/keys.h>
@@ -209,7 +210,7 @@ typedef struct PipeWireASIO
 
     /* PipeWire stuff */
     struct user_pw_helper      *pw_helper;
-    struct pw_loop             *pw_loop;
+    struct pw_thread_loop      *pw_loop;
     struct pw_context          *pw_context;
     struct pw_core             *pw_core;
 
@@ -405,9 +406,9 @@ HIDDEN ULONG STDMETHODCALLTYPE Release(LPASIO pinst)
             This->input_channels = NULL;
         }
 
-        user_pw_lock_loop(This->pw_helper);
+        pw_thread_loop_lock(This->pw_loop);
         pw_filter_destroy(This->pw_filter);
-        user_pw_unlock_loop(This->pw_helper);
+        pw_thread_loop_unlock(This->pw_loop);
 
         This->asio_driver_state = Loaded;
     }
@@ -558,7 +559,7 @@ HIDDEN ASIOBool STDMETHODCALLTYPE Init(LPASIO pinst, void *sysRef)
     //This->asio_sample_rate = jack_get_sample_rate(This->jack_client);
     //This->asio_current_buffersize = jack_get_buffer_size(This->jack_client);
 
-    user_pw_lock_loop(This->pw_helper);
+    pw_thread_loop_lock(This->pw_loop);
 
     This->pw_filter = pw_filter_new(This->pw_core, This->client_name, pw_properties_new(
         PW_KEY_MEDIA_TYPE, "Audio",
@@ -569,7 +570,7 @@ HIDDEN ASIOBool STDMETHODCALLTYPE Init(LPASIO pinst, void *sysRef)
     ));
 
     if (!This->pw_filter) {
-        user_pw_unlock_loop(This->pw_helper);
+        pw_thread_loop_unlock(This->pw_loop);
         user_pw_destroy_helper(This->pw_helper);
         ERR("Failed to create filter node\n");
         return ASIOFalse;
@@ -579,7 +580,7 @@ HIDDEN ASIOBool STDMETHODCALLTYPE Init(LPASIO pinst, void *sysRef)
 
     status = InitPorts(This);
 
-    user_pw_unlock_loop(This->pw_helper);
+    pw_thread_loop_unlock(This->pw_loop);
 
     if (status != ASE_OK) {
         user_pw_destroy_helper(This->pw_helper);
@@ -646,9 +647,9 @@ HIDDEN ASIOError STDMETHODCALLTYPE Start(LPASIO pinst)
     if (This->asio_driver_state != Prepared)
         return ASE_NotPresent;
 
-    user_pw_lock_loop(This->pw_helper);
+    pw_thread_loop_lock(This->pw_loop);
     pw_filter_set_active(This->pw_filter, true);
-    user_pw_unlock_loop(This->pw_helper);
+    pw_thread_loop_unlock(This->pw_loop);
 
     This->asio_sample_position = 0;
 
@@ -701,9 +702,9 @@ HIDDEN ASIOError STDMETHODCALLTYPE Stop(LPASIO pinst)
     if (This->asio_driver_state != Running)
         return ASE_NotPresent;
 
-    user_pw_lock_loop(This->pw_helper);
+    pw_thread_loop_lock(This->pw_loop);
     pw_filter_set_active(This->pw_filter, false);
-    user_pw_unlock_loop(This->pw_helper);
+    pw_thread_loop_unlock(This->pw_loop);
 
     This->asio_driver_state = Prepared;
 
@@ -1104,7 +1105,7 @@ HIDDEN ASIOError STDMETHODCALLTYPE CreateBuffers(LPASIO pinst, ASIOBufferInfo *b
         chan->link = NULL;
     }
 
-    user_pw_lock_loop(This->pw_helper);
+    pw_thread_loop_lock(This->pw_loop);
     /*status = InitPorts(This);
     if (status != ASE_OK)
         return status;*/
@@ -1178,9 +1179,9 @@ HIDDEN ASIOError STDMETHODCALLTYPE CreateBuffers(LPASIO pinst, ASIOBufferInfo *b
         return ASE_HWMalfunction;
     }
 
-    user_pw_unlock_loop(This->pw_helper);
+    pw_thread_loop_unlock(This->pw_loop);
     pthread_barrier_wait(&This->pw_filter_bound);
-    //user_pw_lock_loop(This->pw_helper); // locking here interferes with default_node calls
+    //pw_thread_loop_lock(This->pw_loop); // locking here interferes with default_node calls
 
     /* Connect all ports */
     for (idx = 0; idx < This->conf_number_inputs; ++idx) {
@@ -1197,34 +1198,7 @@ HIDDEN ASIOError STDMETHODCALLTYPE CreateBuffers(LPASIO pinst, ASIOBufferInfo *b
         connect_io_port(This, &This->output_channels[idx], idx, SPA_DIRECTION_OUTPUT);
     }
 
-    /* Allocate audio buffers */
-    #if 0
-    buffer_info = bufferInfo;
-    for (i = 0; i < numChannels; i++, buffer_info++)
-    {
-        IOChannel *chan;
-        if (buffer_info->isInput)
-        {
-            chan = &This->input_channel[buffer_info->channelNum];
-            /* TRACE("ASIO audio buffer for channel %i as input %li created\n", i, This->asio_active_inputs); */
-        }
-        else
-        {
-            chan = &This->output_channel[buffer_info->channelNum];
-            /* TRACE("ASIO audio buffer for channel %i as output %li created\n", i, This->asio_active_outputs); */
-        }
-
-        chan->buffers[0] = pw_filter_dequeue_buffer(chan->port);
-        chan->buffers[1] = pw_filter_dequeue_buffer(chan->port);
-        TRACE("Channel idx %d: buffer 0: %p, buffer 1: %p\n", i, chan->buffers[0], chan->buffers[1]);
-        buffer_info->buffers[0] = NULL; //chan->buffers[0]->buffer->datas->data;
-        buffer_info->buffers[1] = NULL; //chan->buffers[1]->buffer->datas->data;
-        chan->active = true;
-    }
-    TRACE("%i audio channels initialized\n", This->asio_active_inputs + This->asio_active_outputs);
-    #endif
-
-    //user_pw_unlock_loop(This->pw_helper); // see above
+    //pw_thread_loop_unlock(This->pw_loop); // see above
 
     pthread_barrier_wait(&This->asio_buffers_filled);
 
@@ -1275,7 +1249,7 @@ HIDDEN ASIOError STDMETHODCALLTYPE DisposeBuffers(LPASIO pinst)
 
     This->asio_callbacks = NULL;
 
-    user_pw_lock_loop(This->pw_helper);
+    pw_thread_loop_lock(This->pw_loop);
     for (i = 0; i < This->conf_number_inputs; i++)
     {
         dispose_io_port(This, &This->input_channels[i], SPA_DIRECTION_INPUT);
@@ -1286,7 +1260,7 @@ HIDDEN ASIOError STDMETHODCALLTYPE DisposeBuffers(LPASIO pinst)
     }
     This->asio_active_inputs = This->asio_active_outputs = 0;
     pw_filter_disconnect(This->pw_filter);
-    user_pw_unlock_loop(This->pw_helper);
+    pw_thread_loop_unlock(This->pw_loop);
 
     This->asio_driver_state = Initialized;
     return ASE_OK;
@@ -1327,7 +1301,7 @@ HIDDEN int GuiClosedLate(struct spa_loop *loop, bool async, uint32_t seq, void c
 HIDDEN void GuiClosed(struct pwasio_gui_conf *conf)
 {
     PipeWireASIO   *This = (PipeWireASIO *)conf->user;
-    pw_loop_invoke(This->pw_loop, GuiClosedLate, 0, NULL, 0, false, This);
+    pw_loop_invoke(pw_thread_loop_get_loop(This->pw_loop), GuiClosedLate, 0, NULL, 0, false, This);
 }
 
 HIDDEN void GuiApplyConfig(struct pwasio_gui_conf *conf)
@@ -1848,10 +1822,10 @@ static void connect_io_port(PipeWireASIO *This, struct io_port *port, uint32_t i
         SPA_DICT_ITEM_INIT(PW_KEY_LINK_INPUT_PORT, props_s[3]),
     };
     struct spa_dict props = SPA_DICT_INIT_ARRAY(properties);
-    user_pw_lock_loop(This->pw_helper);
+    pw_thread_loop_lock(This->pw_loop);
     port->link = pw_core_create_object(This->pw_core, "link-factory",
         PW_TYPE_INTERFACE_Link, PW_VERSION_LINK, &props, 0);
-    user_pw_unlock_loop(This->pw_helper);
+    pw_thread_loop_unlock(This->pw_loop);
 }
 
 static void dispose_io_port(PipeWireASIO *This, struct io_port *port, enum spa_direction dir) {

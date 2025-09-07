@@ -867,7 +867,7 @@ Helper *create_helper(int argc, char **argv, InitArgs const *conf) {
 	std::puts("[DEBUG] Rountrip done");
 
 	if (conf->loop)
-		*conf->loop = pw_thread_loop_get_loop(This->thread_loop);
+		*conf->loop = This->thread_loop;
 	if (conf->context)
 		*conf->context = This->context;
 	if (conf->core)
@@ -953,14 +953,6 @@ void get_node_props(Helper *helper, struct pw_node *proxy, std::span<std::pair<s
 	node->get_or_wait_for_info(nullptr, nullptr, props);
 }
 
-void lock_loop(Helper *helper) {
-	pw_thread_loop_lock(helper->thread_loop);
-}
-
-void unlock_loop(Helper *helper) {
-	pw_thread_loop_unlock(helper->thread_loop);
-}
-
 // C API
 
 extern "C" {
@@ -979,14 +971,6 @@ struct pw_node *user_pw_get_default_node(struct user_pw_helper *helper, enum spa
 
 struct pw_node *user_pw_find_node_by_name(struct user_pw_helper *helper, char const *name) {
 	return find_node_by_name(reinterpret_cast<Helper *>(helper), name);
-}
-
-void user_pw_lock_loop(struct user_pw_helper *helper) {
-	lock_loop(reinterpret_cast<Helper *>(helper));
-}
-
-void user_pw_unlock_loop(struct user_pw_helper *helper) {
-	unlock_loop(reinterpret_cast<Helper *>(helper));
 }
 
 }

@@ -21,7 +21,4 @@ struct pw_node *find_node_by_name(Helper *helper, char const *name);
 
 void get_node_props(Helper *helper, struct pw_node *proxy, std::span<std::pair<std::string_view, std::string*>> props);
 
-void lock_loop(Helper *helper);
-void unlock_loop(Helper *helper);
-
 }
