@@ -1603,10 +1603,10 @@ static WCHAR *strrchrW(const WCHAR* str, WCHAR ch)
 
 /* Structure to pass around data while creating the PipeWire data thread in the Wine process context */
 struct thread_creator_data {
-    void        *(*run_function) (void*);
-    void        *arg;
-    pthread_t   thread_id;
-    HANDLE      ev_launched;
+    void           *(*run_function)(void*);
+    void             *arg;
+    pthread_t         thread_id;
+    pthread_barrier_t ev_launched;
 };
 
 /* Function called by PipeWire to create a thread in the Wine process context,
@@ -1618,9 +1618,10 @@ static int wine_thread_creator(pthread_t *thread_id, const pthread_attr_t *attr,
 
     helper.run_function = function;
     helper.arg = arg;
-    helper.ev_launched = CreateEventW(NULL, FALSE, FALSE, NULL);
+    pthread_barrier_init(&helper.ev_launched, NULL, 2);
     CreateThread(NULL, 0, wine_thread_runner, &helper, 0, 0);
-    WaitForSingleObject(helper.ev_launched, INFINITE);
+    pthread_barrier_wait(&helper.ev_launched);
+    pthread_barrier_destroy(&helper.ev_launched);
     *thread_id = helper.thread_id;
     return 0;
 }
@@ -1637,7 +1638,7 @@ static DWORD WINAPI wine_thread_runner(LPVOID arg)
     helper->thread_id = pthread_self();
     run_function = helper->run_function;
     run_arg = helper->arg;
-    SetEvent(helper->ev_launched);
+    pthread_barrier_wait(&helper->ev_launched);
 
     // After firing the event, the original thread will pop the helper
     // struct from the stack, so we can't reliably use it anymore.
