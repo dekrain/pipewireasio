@@ -172,6 +172,8 @@ struct io_port {
 
 #define DEVICE_NAME_SIZE 1024
 
+enum { ASIO_DRIVER_VERSION = 21 };
+
 typedef struct PipeWireASIO
 {
     /* COM stuff */
@@ -194,7 +196,6 @@ typedef struct PipeWireASIO
     double                      asio_sample_rate;
     ASIOTime                    asio_time;
     uint64_t                    asio_time_stamp;
-    LONG                        asio_version;
     bool                        asio_can_time_code;
     bool                        asio_time_info_mode;
 
@@ -586,7 +587,7 @@ HIDDEN ASIOBool STDMETHODCALLTYPE Init(LPASIO pinst, void *sysRef)
     }
 
     This->asio_driver_state = Initialized;
-    TRACE("PipeWireASIO 0.%d.%d initialized\n", This->asio_version / 10, This->asio_version % 10);
+    TRACE("PipeWireASIO 0.%d.%d initialized\n", ASIO_DRIVER_VERSION / 10, ASIO_DRIVER_VERSION % 10);
     return ASIOTrue;
 }
 
@@ -611,10 +612,8 @@ HIDDEN void STDMETHODCALLTYPE GetDriverName(LPASIO pinst, char *name)
 DEFINE_THISCALL_WRAPPER(GetDriverVersion,4)
 HIDDEN LONG STDMETHODCALLTYPE GetDriverVersion(LPASIO pinst)
 {
-    PipeWireASIO   *This = (PipeWireASIO*)pinst;
-
-    TRACE("this: %p\n", This);
-    return This->asio_version;
+    TRACE("this: %p\n", pinst);
+    return ASIO_DRIVER_VERSION;
 }
 
 /*
@@ -1932,7 +1931,6 @@ static VOID configure_driver(PipeWireASIO *This)
     This->asio_current_buffersize = 0;
     This->asio_sample_rate = 0;
     This->asio_time_info_mode = FALSE;
-    This->asio_version = 21;
 
     This->conf_number_inputs = 16;
     This->conf_number_outputs = 16;
