@@ -407,6 +407,8 @@ HIDDEN ULONG STDMETHODCALLTYPE Release(LPASIO pinst)
         user_pw_lock_loop(This->pw_helper);
         pw_filter_destroy(This->pw_filter);
         user_pw_unlock_loop(This->pw_helper);
+
+        This->asio_driver_state = Loaded;
     }
     if (ref == 0) {
         TRACE("PipeWireASIO terminated\n\n");
@@ -420,10 +422,6 @@ HIDDEN ULONG STDMETHODCALLTYPE Release(LPASIO pinst)
         HeapFree(GetProcessHeap(), 0, This);
     }
     return ref;
-}
-
-static void Uninit(PipeWireASIO *This) {
-    // TODOOOO
 }
 
 static ASIOError InitPorts(PipeWireASIO *This) {
@@ -514,7 +512,8 @@ static ASIOError InitPorts(PipeWireASIO *This) {
 DEFINE_THISCALL_WRAPPER(Init,8)
 HIDDEN ASIOBool STDMETHODCALLTYPE Init(LPASIO pinst, void *sysRef)
 {
-    PipeWireASIO   *This = (PipeWireASIO *)pinst;
+    PipeWireASIO *This = (PipeWireASIO *)pinst;
+    ASIOError     status;
 
     struct pw_helper_init_args init_args = {
         .app_name = This->client_name,
@@ -523,6 +522,9 @@ HIDDEN ASIOBool STDMETHODCALLTYPE Init(LPASIO pinst, void *sysRef)
         .core = &This->pw_core,
         .thread_creator = wine_thread_creator,
     };
+
+    if (This->asio_driver_state != Loaded)
+        return ASIOFalse;
 
     This->sys_ref = sysRef;
     configure_driver(This);
@@ -566,15 +568,22 @@ HIDDEN ASIOBool STDMETHODCALLTYPE Init(LPASIO pinst, void *sysRef)
     ));
 
     if (!This->pw_filter) {
+        user_pw_unlock_loop(This->pw_helper);
+        user_pw_destroy_helper(This->pw_helper);
         ERR("Failed to create filter node\n");
         return ASIOFalse;
     }
 
     pw_filter_add_listener(This->pw_filter, &This->pw_filter_listener, &pw_filter_events, This);
 
-    InitPorts(This);
+    status = InitPorts(This);
 
     user_pw_unlock_loop(This->pw_helper);
+
+    if (status != ASE_OK) {
+        user_pw_destroy_helper(This->pw_helper);
+        return ASIOFalse;
+    }
 
     This->asio_driver_state = Initialized;
     TRACE("PipeWireASIO 0.%d.%d initialized\n", This->asio_version / 10, This->asio_version % 10);
@@ -717,6 +726,9 @@ HIDDEN ASIOError STDMETHODCALLTYPE GetChannels (LPASIO pinst, LONG *numInputChan
     if (!numInputChannels || !numOutputChannels)
         return ASE_InvalidParameter;
 
+    if (This->asio_driver_state < Initialized)
+        return ASE_NotPresent;
+
     *numInputChannels = This->conf_number_inputs;
     *numOutputChannels = This->conf_number_outputs;
     TRACE("this: %p, inputs: %i, outputs: %i\n", This, This->conf_number_inputs, This->conf_number_outputs);
@@ -737,7 +749,7 @@ HIDDEN ASIOError STDMETHODCALLTYPE GetLatencies(LPASIO pinst, LONG *inputLatency
     if (!inputLatency || !outputLatency)
         return ASE_InvalidParameter;
 
-    if (This->asio_driver_state == Loaded)
+    if (This->asio_driver_state < Prepared)
         return ASE_NotPresent;
 
     // TODO: Get PipeWire IO latency
@@ -763,6 +775,9 @@ HIDDEN ASIOError STDMETHODCALLTYPE GetBufferSize(LPASIO pinst, LONG *minSize, LO
 
     if (!minSize || !maxSize || !preferredSize || !granularity)
         return ASE_InvalidParameter;
+
+    if (This->asio_driver_state < Initialized)
+        return ASE_NotPresent;
 
     if (This->conf_fixed_buffersize)
     {
@@ -794,6 +809,9 @@ HIDDEN ASIOError STDMETHODCALLTYPE CanSampleRate(LPASIO pinst, ASIOSampleRate sa
 
     TRACE("this: %p, Samplerate = %li, requested samplerate = %li\n", This, (long) This->asio_sample_rate, (long) sampleRate);
 
+    if (This->asio_driver_state < Initialized)
+        return ASE_NotPresent;
+
     //if (sampleRate != This->asio_sample_rate)
     //    return ASE_NoClock;
     return ASE_OK;
@@ -816,6 +834,9 @@ HIDDEN ASIOError STDMETHODCALLTYPE GetSampleRate(LPASIO pinst, ASIOSampleRate *s
     if (!sampleRate)
         return ASE_InvalidParameter;
 
+    if (This->asio_driver_state < Initialized)
+        return ASE_NotPresent;
+
     *sampleRate = This->asio_sample_rate;
     return ASE_OK;
 }
@@ -835,6 +856,12 @@ HIDDEN ASIOError STDMETHODCALLTYPE SetSampleRate(LPASIO pinst, ASIOSampleRate sa
 
     TRACE("this: %p, Sample rate %f requested\n", This, sampleRate);
 
+    if (This->asio_driver_state < Initialized)
+        return ASE_NotPresent;
+
+    if (!(sampleRate >= 0.0 && sampleRate <= (ASIOSampleRate)UINT_MAX))
+        return ASE_InvalidParameter;
+
     This->asio_sample_rate = sampleRate;
     return ASE_OK;
 }
@@ -851,10 +878,14 @@ HIDDEN ASIOError STDMETHODCALLTYPE SetSampleRate(LPASIO pinst, ASIOSampleRate sa
 DEFINE_THISCALL_WRAPPER(GetClockSources,12)
 HIDDEN ASIOError STDMETHODCALLTYPE GetClockSources(LPASIO pinst, ASIOClockSource *clocks, LONG *numSources)
 {
-    TRACE("this: %p, clocks: %p, numSources: %p\n", pinst, clocks, numSources);
+    PipeWireASIO   *This = (PipeWireASIO*)pinst;
+    TRACE("this: %p, clocks: %p, numSources: %p\n", This, clocks, numSources);
 
     if (!clocks || !numSources)
         return ASE_InvalidParameter;
+
+    if (This->asio_driver_state < Initialized)
+        return ASE_NotPresent;
 
     clocks->index = 0;
     clocks->associatedChannel = -1;
@@ -877,7 +908,11 @@ HIDDEN ASIOError STDMETHODCALLTYPE GetClockSources(LPASIO pinst, ASIOClockSource
 DEFINE_THISCALL_WRAPPER(SetClockSource,8)
 HIDDEN ASIOError STDMETHODCALLTYPE SetClockSource(LPASIO pinst, LONG index)
 {
-    TRACE("this: %p, index: %i\n", pinst, index);
+    PipeWireASIO   *This = (PipeWireASIO*)pinst;
+    TRACE("this: %p, index: %i\n", This, index);
+
+    if (This->asio_driver_state < Initialized)
+        return ASE_NotPresent;
 
     if (index != 0)
         return ASE_NotPresent;
@@ -903,6 +938,9 @@ HIDDEN ASIOError STDMETHODCALLTYPE GetSamplePosition(LPASIO pinst, ASIOSamples *
     if (!sPos || !tStamp)
         return ASE_InvalidParameter;
 
+    if (This->asio_driver_state != Running)
+        return ASE_NotPresent;
+
     *tStamp = ASIO_LONG(ASIOTimeStamp, This->asio_time_stamp);
     *sPos = ASIO_LONG(ASIOSamples, This->asio_sample_position);
 
@@ -921,6 +959,9 @@ HIDDEN ASIOError STDMETHODCALLTYPE GetChannelInfo(LPASIO pinst, ASIOChannelInfo 
     PipeWireASIO   *This = (PipeWireASIO*)pinst;
 
     TRACE("this: %p, info: %p\n", This, info);
+
+    if (This->asio_driver_state < Initialized)
+        return ASE_NotPresent;
 
     if (info->channel < 0 || (info->isInput ? info->channel >= This->conf_number_inputs : info->channel >= This->conf_number_outputs))
         return ASE_InvalidParameter;
@@ -1265,6 +1306,9 @@ HIDDEN ASIOError STDMETHODCALLTYPE ControlPanel(LPASIO pinst)
     PipeWireASIO   *This = (PipeWireASIO *)pinst;
     TRACE("Opening control panel. this: %p\n", This);
 
+    if (This->asio_driver_state < Initialized)
+        return ASE_NotPresent;
+
     if (This->gui == NULL) {
         This->gui = pwasio_init_gui(&This->gui_conf);
     } else {
@@ -1315,6 +1359,9 @@ HIDDEN ASIOError STDMETHODCALLTYPE Future(LPASIO pinst, LONG selector, void *opt
     PipeWireASIO           *This = (PipeWireASIO *) pinst;
 
     TRACE("this: %p, selector: %i, opt: %p\n", This, selector, opt);
+
+    if (This->asio_driver_state < Initialized)
+        return ASE_NotPresent;
 
     switch (selector)
     {
@@ -1883,7 +1930,6 @@ static VOID configure_driver(PipeWireASIO *This)
     This->asio_callbacks = NULL;
     This->asio_can_time_code = FALSE;
     This->asio_current_buffersize = 0;
-    This->asio_driver_state = Loaded;
     This->asio_sample_rate = 0;
     This->asio_time_info_mode = FALSE;
     This->asio_version = 21;
@@ -2073,6 +2119,7 @@ HRESULT WINAPI PipeWireASIOCreate(REFIID riid, LPVOID *ppobj, IUnknown *cls_fact
     pobj->lpVtbl = &PipeWireASIO_Vtbl;
     pobj->ref = 1;
     pobj->cls_factory = cls_factory;
+    pobj->asio_driver_state = Loaded;
     cls_factory->lpVtbl->AddRef(cls_factory);
     TRACE("pobj = %p\n", pobj);
     *ppobj = pobj;
