@@ -173,7 +173,7 @@ struct io_port {
 
 #define DEVICE_NAME_SIZE 1024
 
-enum { ASIO_DRIVER_VERSION = 21 };
+enum { ASIO_DRIVER_VERSION = 22 };
 
 typedef struct PipeWireASIO
 {

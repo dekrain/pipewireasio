@@ -134,6 +134,12 @@ that overrides the JACK client name derived from the program name.
 
 #### PipeWire version: `pipewireasioXX.dll`
 
+#### 0.2.2
+* 07-SEP-2025: Fix random crashes by guarding against null values in metadata events
+* 07-SEP-2025: Strictly keep track of driver state. Clean up resources upon initialization failure
+* 04-SEP-2025: Improve `__thiscall` type safety by generating properly typed prototypes
+* 04-SEP-2025: Cleanup, remove remaining JACK stuff from the driver
+
 #### 0.2.1
 * 02-SEP-2025: Apply latency to individual input and output ports
 * 02-SEP-2025: Drop RAW audio format, fixing hanging of the graph
